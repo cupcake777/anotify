@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import httpx
 from fastapi import Depends, FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel, Field, field_validator
 
@@ -90,6 +91,8 @@ class Notification(BaseModel):
     cwd: str = ""
     host: str = ""
     agent: str = ""
+    approval_id: str = ""
+    callback_url: str = ""
 
     @field_validator("message")
     @classmethod
@@ -112,6 +115,28 @@ class Notification(BaseModel):
         if v not in ("low", "medium", "high", "critical"):
             return "medium"
         return v
+
+
+class ApprovalResponse(BaseModel):
+    """Schema for desktop approval button responses."""
+
+    approval_id: str
+    choice: str
+    callback_url: str = ""
+
+    @field_validator("choice")
+    @classmethod
+    def validate_choice(cls, v: str) -> str:
+        normalized = v.strip().lower()
+        if normalized in {"accepted", "accept", "approve", "approved", "once"}:
+            return "once"
+        if normalized in {"denied", "deny", "reject", "rejected"}:
+            return "deny"
+        if normalized in {"session", "approve_session"}:
+            return "session"
+        if normalized in {"always", "permanent"}:
+            return "always"
+        raise ValueError("choice must be accept/deny/session/always")
 
 
 # ── State ──────────────────────────────────────────────────────────────
@@ -227,6 +252,37 @@ async def get_history(
 ) -> dict[str, Any]:
     """Return recent notifications from the in-memory history."""
     return {"notifications": history[-50:]}
+
+
+@app.post("/api/approval/respond")
+async def respond_approval(
+    response: ApprovalResponse,
+    _: None = Depends(verify_token),
+) -> dict[str, Any]:
+    """Forward a desktop approval decision to the originating Hermes process."""
+    callback_url = response.callback_url
+    if not callback_url:
+        for item in reversed(history):
+            if item.get("approval_id") == response.approval_id:
+                callback_url = item.get("callback_url", "")
+                break
+    if not callback_url:
+        raise HTTPException(status_code=404, detail="approval callback not found")
+    if not (
+        callback_url.startswith("http://127.0.0.1:")
+        or callback_url.startswith("http://localhost:")
+    ):
+        raise HTTPException(status_code=400, detail="approval callback must be local")
+
+    payload = {"approval_id": response.approval_id, "choice": response.choice}
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            callback_resp = await client.post(callback_url, json=payload)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"callback failed: {exc}") from exc
+    if callback_resp.status_code >= 400:
+        raise HTTPException(status_code=502, detail=callback_resp.text[:500])
+    return {"ok": True, "choice": response.choice}
 
 
 @app.get("/api/health")

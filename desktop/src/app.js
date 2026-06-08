@@ -211,11 +211,24 @@ function spawnToast(raw) {
   });
   toast.querySelector(".close").addEventListener("click", () => dismiss(toast));
   toast.querySelectorAll(".act").forEach((btn) => {
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", async () => {
       const act = btn.dataset.act;
       if (act === "inbox") {
         openModal(inboxModal);
         return;
+      }
+      if (kind === "approval" && item.approval_id && invoke) {
+        try {
+          await invoke("respond_approval", {
+            approvalId: item.approval_id,
+            choice: act,
+            callbackUrl: item.callback_url || "",
+          });
+        } catch (err) {
+          const bar = toast.querySelector(".actionbar");
+          if (bar) bar.outerHTML = `<div class="resolved">⚠ ${escapeHtml(String(err))}</div>`;
+          return;
+        }
       }
       item.resolution = act;
       updateInboxButton();

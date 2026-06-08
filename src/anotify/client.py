@@ -15,7 +15,6 @@ import sys
 import threading
 from collections import OrderedDict
 from typing import Any, Callable
-from urllib.parse import quote
 
 from .config import ensure_ws_url, get_server, get_token, load_config, save_config
 from .events import classify
@@ -152,14 +151,9 @@ class NotifyClient:
         kwargs: dict[str, Any] = {"ping_interval": 20, "ping_timeout": 10}
 
         if self.token:
-            # Prefer the Authorization header (kept out of URLs/proxy logs).
-            # Keep a URL-encoded query-param fallback for relays that only
-            # read ?token= (e.g. the public relay). An updated server reads
-            # the header first, so sending both is backward compatible.
-            url += f"?token={quote(self.token, safe='')}"
             header = ("Authorization", f"Bearer {self.token}")
             # websockets renamed extra_headers -> additional_headers in v14;
-            # try the modern name, fall back, then drop headers if neither fits.
+            # try the modern name, then the legacy name.
             for key in ("additional_headers", "extra_headers"):
                 attempt: dict[str, Any] = {**kwargs, key: [header]}
                 try:

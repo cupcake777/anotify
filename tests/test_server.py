@@ -132,6 +132,73 @@ class TestHistory:
         assert "notifications" in resp.json()
 
 
+# ── Approval Response ──
+class TestApprovalResponse:
+    def test_requires_auth(self, client):
+        resp = client.post(
+            "/api/approval/respond",
+            json={"approval_id": "a1", "choice": "accepted"},
+        )
+        assert resp.status_code == 401
+
+    def test_rejects_nonlocal_callback(self, client, auth_headers):
+        resp = client.post(
+            "/api/approval/respond",
+            json={
+                "approval_id": "a1",
+                "choice": "accepted",
+                "callback_url": "https://example.com/cb",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+
+    def test_uses_history_callback_and_normalizes_choice(self, client, auth_headers, monkeypatch):
+        captured = {}
+
+        class FakeAsyncClient:
+            def __init__(self, timeout):
+                self.timeout = timeout
+
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                return False
+
+            async def post(self, url, json):
+                captured["url"] = url
+                captured["json"] = json
+
+                class Resp:
+                    status_code = 200
+                    text = "ok"
+
+                return Resp()
+
+        monkeypatch.setattr(srv.httpx, "AsyncClient", FakeAsyncClient)
+        client.post(
+            "/api/notify",
+            json={
+                "message": "approval",
+                "approval_id": "a1",
+                "callback_url": "http://127.0.0.1:12345/approval/respond",
+            },
+            headers=auth_headers,
+        )
+        resp = client.post(
+            "/api/approval/respond",
+            json={"approval_id": "a1", "choice": "accepted"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["choice"] == "once"
+        assert captured == {
+            "url": "http://127.0.0.1:12345/approval/respond",
+            "json": {"approval_id": "a1", "choice": "once"},
+        }
+
+
 # ── Model ──
 
 class TestNotificationModel:

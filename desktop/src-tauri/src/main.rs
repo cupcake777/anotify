@@ -10,7 +10,10 @@ use tauri::{
     Emitter, Manager,
 };
 use tokio::sync::Mutex;
-use tokio_tungstenite::{connect_async, tungstenite::Message};
+use tokio_tungstenite::{
+    connect_async,
+    tungstenite::{client::IntoClientRequest, http::HeaderValue, Message},
+};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // State
@@ -79,6 +82,16 @@ fn save_config(server: &str, token: &str) -> Result<(), String> {
 // Tauri Commands (called from frontend JS)
 // ═══════════════════════════════════════════════════════════════════════════
 
+fn api_endpoint(server: &str, path: &str) -> String {
+    server
+        .replace("wss://", "https://")
+        .replace("ws://", "http://")
+        .trim_end_matches("/ws")
+        .trim_end_matches('/')
+        .to_string()
+        + path
+}
+
 #[tauri::command]
 async fn get_notifications(state: tauri::State<'_, AppState>) -> Result<Vec<Notification>, String> {
     let n = state.notifications.lock().await;
@@ -114,13 +127,7 @@ async fn clear_notifications(state: tauri::State<'_, AppState>) -> Result<(), St
 async fn send_test_notification(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let server = state.server_url.lock().await.clone();
     let token = state.token.lock().await.clone();
-    let endpoint = server
-        .replace("wss://", "https://")
-        .replace("ws://", "http://")
-        .trim_end_matches("/ws")
-        .trim_end_matches('/')
-        .to_string()
-        + "/api/notify";
+    let endpoint = api_endpoint(&server, "/api/notify");
 
     let response = reqwest::Client::new()
         .post(&endpoint)
@@ -134,6 +141,41 @@ async fn send_test_notification(state: tauri::State<'_, AppState>) -> Result<Str
         .send()
         .await
         .map_err(|e| format!("Failed to send test: {}", e))?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "<empty response>".to_string());
+    if status.is_success() {
+        Ok(body)
+    } else {
+        Err(format!("{} {}", status, body))
+    }
+}
+
+#[tauri::command]
+async fn respond_approval(
+    state: tauri::State<'_, AppState>,
+    approval_id: String,
+    choice: String,
+    callback_url: String,
+) -> Result<String, String> {
+    let server = state.server_url.lock().await.clone();
+    let token = state.token.lock().await.clone();
+    let endpoint = api_endpoint(&server, "/api/approval/respond");
+
+    let response = reqwest::Client::new()
+        .post(&endpoint)
+        .bearer_auth(token)
+        .json(&serde_json::json!({
+            "approval_id": approval_id,
+            "choice": choice,
+            "callback_url": callback_url,
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send approval response: {}", e))?;
 
     let status = response.status();
     let body = response
@@ -183,13 +225,35 @@ async fn start_ws_connection(
         .replace("https://", "wss://")
         .replace("http://", "ws://");
     let full_url = if ws_url.ends_with("/ws") {
-        format!("{}?token={}", ws_url, token)
+        ws_url
     } else {
-        format!("{}/ws?token={}", ws_url, token)
+        format!("{}/ws", ws_url)
     };
 
     loop {
-        match connect_async(&full_url).await {
+        let request_result = (|| -> Result<_, String> {
+            let mut request = full_url
+                .clone()
+                .into_client_request()
+                .map_err(|e| e.to_string())?;
+            if !token.is_empty() {
+                let header = HeaderValue::from_str(&format!("Bearer {}", token))
+                    .map_err(|e| e.to_string())?;
+                request.headers_mut().insert("Authorization", header);
+            }
+            Ok(request)
+        })();
+        let request = match request_result {
+            Ok(request) => request,
+            Err(e) => {
+                eprintln!("[anotify] Invalid WebSocket request: {} — retrying in 5s", e);
+                let _ = app_handle.emit("ws-status", "disconnected");
+                tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+                continue;
+            }
+        };
+
+        match connect_async(request).await {
             Ok((ws_stream, _)) => {
                 println!("[anotify] Connected to {}", full_url);
                 let _ = app_handle.emit("ws-status", "connected");
@@ -227,8 +291,11 @@ async fn start_ws_connection(
                                     }
                                 }
 
-                                // Emit to frontend; the app renders controlled in-window toast UI.
-                                let _ = app_handle.emit("notification", &notif);
+                                // Keep dashboard history and toast overlay separate.
+                                // A global event is delivered to both windows and makes the
+                                // transparent toast overlay render duplicates.
+                                let _ = app_handle.emit_to("main", "notification", &notif);
+                                let _ = app_handle.emit_to("toasts", "notification", &data);
                             }
                         }
                         Ok(Message::Close(_)) => break,
@@ -407,6 +474,7 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             get_config,
             clear_notifications,
             send_test_notification,
+            respond_approval,
             reconnect,
         ])
         .run(tauri::generate_context!())?;
