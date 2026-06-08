@@ -28,6 +28,12 @@ struct Notification {
     timestamp: f64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ConfigView {
+    server_configured: bool,
+    token_configured: bool,
+}
+
 struct AppState {
     server_url: Arc<Mutex<String>>,
     token: Arc<Mutex<String>>,
@@ -52,15 +58,14 @@ fn read_config() -> (String, String) {
             return (
                 cfg["server"]
                     .as_str()
-                    .unwrap_or("wss://notify.bioinfo.pro/ws")
+                    .unwrap_or("")
                     .to_string(),
                 cfg["token"].as_str().unwrap_or("").to_string(),
             );
         }
     }
     // Also try environment variables
-    let server =
-        std::env::var("ANOTIFY_SERVER").unwrap_or_else(|_| "wss://notify.bioinfo.pro/ws".into());
+    let server = std::env::var("ANOTIFY_SERVER").unwrap_or_default();
     let token = std::env::var("ANOTIFY_TOKEN").unwrap_or_default();
     (server, token)
 }
@@ -104,17 +109,30 @@ async fn update_config(
     server: String,
     token: String,
 ) -> Result<(), String> {
-    *state.server_url.lock().await = server.clone();
-    *state.token.lock().await = token.clone();
-    save_config(&server, &token)?;
+    let next_server = if server.trim().is_empty() {
+        state.server_url.lock().await.clone()
+    } else {
+        server.trim().to_string()
+    };
+    let next_token = if token.trim().is_empty() {
+        state.token.lock().await.clone()
+    } else {
+        token.trim().to_string()
+    };
+    *state.server_url.lock().await = next_server.clone();
+    *state.token.lock().await = next_token.clone();
+    save_config(&next_server, &next_token)?;
     Ok(())
 }
 
 #[tauri::command]
-async fn get_config(state: tauri::State<'_, AppState>) -> Result<(String, String), String> {
+async fn get_config(state: tauri::State<'_, AppState>) -> Result<ConfigView, String> {
     let server = state.server_url.lock().await.clone();
     let token = state.token.lock().await.clone();
-    Ok((server, token))
+    Ok(ConfigView {
+        server_configured: !server.is_empty(),
+        token_configured: !token.is_empty(),
+    })
 }
 
 #[tauri::command]
@@ -124,23 +142,29 @@ async fn clear_notifications(state: tauri::State<'_, AppState>) -> Result<(), St
 }
 
 #[tauri::command]
-async fn send_test_notification(state: tauri::State<'_, AppState>) -> Result<String, String> {
+async fn verify_connection(state: tauri::State<'_, AppState>) -> Result<String, String> {
     let server = state.server_url.lock().await.clone();
     let token = state.token.lock().await.clone();
+    if server.trim().is_empty() {
+        return Err("Server URL is not configured".to_string());
+    }
+    if token.trim().is_empty() {
+        return Err("Token is not configured".to_string());
+    }
     let endpoint = api_endpoint(&server, "/api/notify");
 
     let response = reqwest::Client::new()
         .post(&endpoint)
         .bearer_auth(token)
         .json(&serde_json::json!({
-            "title": "anotify test",
-            "message": "Settings test notification",
+            "title": "anotify verification",
+            "message": "Desktop notification delivery is working",
             "priority": "high",
             "source": "anotify-desktop"
         }))
         .send()
         .await
-        .map_err(|e| format!("Failed to send test: {}", e))?;
+        .map_err(|e| format!("Failed to verify connection: {}", e))?;
 
     let status = response.status();
     let body = response
@@ -163,6 +187,9 @@ async fn respond_approval(
 ) -> Result<String, String> {
     let server = state.server_url.lock().await.clone();
     let token = state.token.lock().await.clone();
+    if server.trim().is_empty() || token.trim().is_empty() {
+        return Err("Connection is not configured".to_string());
+    }
     let endpoint = api_endpoint(&server, "/api/approval/respond");
 
     let response = reqwest::Client::new()
@@ -221,6 +248,10 @@ async fn start_ws_connection(
     app_handle: tauri::AppHandle,
     notifications: Arc<Mutex<Vec<Notification>>>,
 ) {
+    if server_url.trim().is_empty() || token.trim().is_empty() {
+        let _ = app_handle.emit("ws-status", "disconnected");
+        return;
+    }
     let ws_url = server_url
         .replace("https://", "wss://")
         .replace("http://", "ws://");
@@ -473,7 +504,7 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             update_config,
             get_config,
             clear_notifications,
-            send_test_notification,
+            verify_connection,
             respond_approval,
             reconnect,
         ])

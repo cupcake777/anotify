@@ -4,16 +4,22 @@ const { listen } = window.__TAURI__?.event ?? {};
 const $ = (id) => document.getElementById(id);
 const statusDot = $("status-dot");
 const wsStatus = $("ws-status");
+const connectionState = $("connection-state");
 const stack = $("stack");
 const inboxList = $("notifications");
-const inboxBtn = $("inbox-btn");
 const inboxCount = $("inbox-count");
-const scrim = $("scrim");
-const inboxModal = $("inbox-modal");
-const settingsModal = $("settings-modal");
+const navInboxCount = $("nav-inbox-count");
+const recentList = $("recent-list");
+const metricInbox = $("metric-inbox");
+const metricPending = $("metric-pending");
+const metricLive = $("metric-live");
+const serverSummary = $("server-summary");
+const tokenSummary = $("token-summary");
+const privacyState = $("privacy-state");
 const settingsForm = $("settings-form");
 const cfgServer = $("cfg-server");
 const cfgToken = $("cfg-token");
+const configCurrent = $("config-current");
 const saveBtn = $("save-btn");
 
 const ACCENT = {
@@ -45,6 +51,12 @@ const RULES = [
   [["complete", "completed", "done", "success", "succeeded", "finished", "passed"], "complete"],
   [["message", "msg", "reply", "new "], "message"],
 ];
+const SAMPLE_NOTIFICATIONS = {
+  message: { title: "New notification", message: "A background agent sent a desktop notification.", priority: "medium", source: "agent@local", kind: "message" },
+  approval: { title: "Approval required", message: "An agent is waiting for your decision.", priority: "high", source: "hermes@local", kind: "approval" },
+  complete: { title: "Task complete", message: "The background task finished successfully.", priority: "medium", source: "agent@local", kind: "complete" },
+  error: { title: "Action failed", message: "A background task reported an error.", priority: "high", source: "agent@local", kind: "error" },
+};
 
 let inbox = [];
 let dnd = false;
@@ -54,6 +66,8 @@ let maxStack = 4;
 let filter = "all";
 let query = "";
 let layoutLeft = false;
+let serverConfigured = false;
+let tokenConfigured = false;
 
 function classify(title = "", message = "", source = "", priority = "medium") {
   const text = `${source} ${title} ${message}`.toLowerCase();
@@ -110,10 +124,26 @@ function normalizeNotification(n) {
   };
 }
 
+function updateMetrics() {
+  const pending = inbox.filter((item) => (item.kind === "approval" || item.priority === "critical") && !item.resolution).length;
+  metricInbox.textContent = String(inbox.length);
+  metricPending.textContent = String(pending);
+  metricLive.textContent = String(stack.children.length);
+  navInboxCount.textContent = String(inbox.length);
+  inboxCount.textContent = `${inbox.length} item${inbox.length === 1 ? "" : "s"}`;
+}
+
 function setStatus(status) {
-  const connected = status === "connected";
-  statusDot.className = `dot ${connected ? "connected" : "disconnected"}`;
-  wsStatus.textContent = connected ? "● Connected" : "○ Disconnected";
+  statusDot.className = `dot ${status === "connected" ? "connected" : status === "connecting" ? "connecting" : "disconnected"}`;
+  const label = status === "connected" ? "Connected" : status === "connecting" ? "Connecting" : "Disconnected";
+  wsStatus.textContent = label;
+  connectionState.textContent = label;
+}
+
+function switchView(name) {
+  document.querySelectorAll(".view").forEach((view) => view.classList.toggle("active", view.id === `view-${name}`));
+  document.querySelectorAll(".nav-item").forEach((button) => button.classList.toggle("active", button.dataset.view === name));
+  $("view-title").textContent = name[0].toUpperCase() + name.slice(1);
 }
 
 function addInbox(notification) {
@@ -121,13 +151,27 @@ function addInbox(notification) {
   inbox.unshift(item);
   if (inbox.length > 200) inbox.length = 200;
   renderInbox();
-  updateInboxButton();
+  renderRecent();
+  updateMetrics();
   return item;
 }
 
-function updateInboxButton() {
-  const unresolved = inbox.filter((item) => (item.kind === "approval" || item.priority === "critical") && !item.resolution).length;
-  inboxBtn.textContent = `📥 Inbox (${inbox.length})${unresolved ? ` · ${unresolved}!` : ""}`;
+function renderRecent() {
+  const items = inbox.slice(0, 5);
+  if (!items.length) {
+    recentList.innerHTML = '<p class="empty">No notifications yet.</p>';
+    return;
+  }
+  recentList.innerHTML = items.map(renderInboxRow).join("");
+}
+
+function renderInboxRow(item) {
+  const src = parseSource(item);
+  return `<article class="ix" data-id="${item.id}" style="--ac:${ACCENT_HEX[item.kind] || ACCENT_HEX.info}">
+    <div class="av"><img src="${ICONS[item.kind] || ICONS.info}" alt=""></div>
+    <div><div class="t">${escapeHtml(item.title || "Notification")}</div><div class="s">${escapeHtml(src.host ? `${src.host} · ` : "")}${escapeHtml(oneLiner(item))}</div></div>
+    <span class="when">${hhmm(item.timestamp)}</span>
+  </article>`;
 }
 
 function renderInbox() {
@@ -136,19 +180,11 @@ function renderInbox() {
     const text = `${item.title || ""} ${item.message || ""} ${item.source || ""}`.toLowerCase();
     return (filter === "all" || item.kind === filter) && (!q || text.includes(q));
   });
-  inboxCount.textContent = `${items.length} of ${inbox.length}`;
   if (!items.length) {
-    inboxList.innerHTML = '<p class="empty">Nothing here yet 🐦</p>';
+    inboxList.innerHTML = '<p class="empty">No notifications yet.</p>';
     return;
   }
-  inboxList.innerHTML = items.map((item) => {
-    const src = parseSource(item);
-    return `<article class="ix" data-id="${item.id}" style="--ac:${ACCENT_HEX[item.kind] || ACCENT_HEX.info}">
-      <div class="av"><img src="${ICONS[item.kind] || ICONS.info}" alt=""></div>
-      <div><div class="t">${escapeHtml(item.title || "Notification")}</div><div class="s">${escapeHtml(src.host ? `${src.host} · ` : "")}${escapeHtml(oneLiner(item))}</div></div>
-      <span class="when">${hhmm(item.timestamp)}</span>
-    </article>`;
-  }).join("");
+  inboxList.innerHTML = items.map(renderInboxRow).join("");
   inboxList.querySelectorAll(".ix").forEach((row) => {
     row.addEventListener("click", () => {
       const old = row.nextElementSibling;
@@ -194,6 +230,7 @@ function spawnToast(raw) {
 
   stack.appendChild(toast);
   while (stack.children.length > maxStack) hardRemove(stack.firstElementChild);
+  updateMetrics();
 
   let timer = duration > 0 ? setTimeout(() => dismiss(toast), duration) : null;
   toast.addEventListener("mouseenter", () => {
@@ -214,7 +251,7 @@ function spawnToast(raw) {
     btn.addEventListener("click", async () => {
       const act = btn.dataset.act;
       if (act === "inbox") {
-        openModal(inboxModal);
+        switchView("inbox");
         return;
       }
       if (kind === "approval" && item.approval_id && invoke) {
@@ -231,7 +268,7 @@ function spawnToast(raw) {
         }
       }
       item.resolution = act;
-      updateInboxButton();
+      updateMetrics();
       const bar = toast.querySelector(".actionbar");
       if (bar) bar.outerHTML = `<div class="resolved">✔ ${act}</div>`;
       setTimeout(() => dismiss(toast), 850);
@@ -250,16 +287,7 @@ function hardRemove(toast) {
   if (!toast || toast._gone) return;
   toast._gone = true;
   toast.remove();
-}
-
-function openModal(modal) {
-  scrim.classList.add("show");
-  modal.classList.add("show");
-}
-function closeModals() {
-  scrim.classList.remove("show");
-  inboxModal.classList.remove("show");
-  settingsModal.classList.remove("show");
+  updateMetrics();
 }
 
 function applyLayout() {
@@ -276,24 +304,30 @@ function applyTheme() {
 async function loadConfig() {
   if (!invoke) return;
   try {
-    const [server, token] = await invoke("get_config");
-    cfgServer.value = server || "";
-    cfgToken.value = token || "";
+    const config = await invoke("get_config");
+    cfgServer.value = "";
+    cfgToken.value = "";
+    serverConfigured = Boolean(config.server_configured);
+    tokenConfigured = Boolean(config.token_configured);
+    serverSummary.textContent = serverConfigured ? "Server configured" : "Server not configured";
+    tokenSummary.textContent = tokenConfigured ? "Token configured" : "Token not configured";
+    configCurrent.textContent = `Current config: ${serverConfigured && tokenConfigured ? "ready" : "setup required"}`;
+    privacyState.textContent = serverConfigured || tokenConfigured ? "Values hidden" : "Setup required";
   } catch (err) {
     console.error("Failed to load config:", err);
   }
 }
 
-async function sendTestNotification() {
+async function verifyConnection() {
   if (!invoke) {
-    spawnToast({ title: "Tauri API missing", message: "Run this inside the desktop app.", priority: "high", source: "anotify@local" });
+    spawnToast({ title: "Desktop bridge unavailable", message: "Open this panel from the installed desktop app.", priority: "high", source: "anotify@local", kind: "error" });
     return;
   }
   try {
-    const result = await invoke("send_test_notification");
-    spawnToast({ title: "Test sent", message: result, priority: "medium", source: "anotify@local", kind: "complete" });
+    const result = await invoke("verify_connection");
+    spawnToast({ title: "Connection verified", message: result, priority: "medium", source: "anotify@local", kind: "complete" });
   } catch (err) {
-    spawnToast({ title: "Test failed", message: String(err), priority: "high", source: "anotify@local", kind: "error" });
+    spawnToast({ title: "Connection failed", message: String(err), priority: "high", source: "anotify@local", kind: "error" });
   }
 }
 
@@ -306,16 +340,18 @@ settingsForm.addEventListener("submit", async (event) => {
   try {
     await invoke("update_config", { server: cfgServer.value.trim(), token: cfgToken.value.trim() });
     await invoke("reconnect");
-    saveBtn.textContent = "✅ Saved";
-    spawnToast({ title: "Settings saved", message: "Config persisted and WebSocket reconnect requested.", priority: "medium", source: "anotify@local", kind: "complete" });
+    saveBtn.textContent = "Saved";
+    cfgToken.value = "";
+    await loadConfig();
+    spawnToast({ title: "Settings saved", message: "Connection settings were updated.", priority: "medium", source: "anotify@local", kind: "complete" });
   } catch (err) {
-    saveBtn.textContent = "⚠️ Failed";
+    saveBtn.textContent = "Failed";
     spawnToast({ title: "Save failed", message: String(err), priority: "high", source: "anotify@local", kind: "error" });
   } finally {
     setTimeout(() => {
       saveBtn.textContent = original;
       saveBtn.disabled = false;
-    }, 1800);
+    }, 1600);
   }
 });
 
@@ -326,36 +362,35 @@ async function setupListeners() {
   }
   await listen("notification", (event) => spawnToast(event.payload));
   await listen("ws-status", (event) => setStatus(event.payload));
-  await listen("navigate", (event) => {
-    if (event.payload === "settings") openModal(settingsModal);
-    else openModal(inboxModal);
-  });
+  await listen("navigate", (event) => switchView(event.payload === "settings" ? "settings" : "inbox"));
 }
 
 $("clear-btn").addEventListener("click", async () => {
   inbox = [];
   renderInbox();
-  updateInboxButton();
+  renderRecent();
   stack.innerHTML = "";
+  updateMetrics();
   if (invoke) await invoke("clear_notifications").catch(console.error);
 });
-$("inbox-btn").addEventListener("click", () => openModal(inboxModal));
-$("settings-btn").addEventListener("click", () => openModal(settingsModal));
-$("test-btn").addEventListener("click", sendTestNotification);
-$("settings-test-btn").addEventListener("click", sendTestNotification);
+$("verify-btn").addEventListener("click", verifyConnection);
+$("settings-verify-btn").addEventListener("click", verifyConnection);
+$("settings-shortcut").addEventListener("click", () => switchView("settings"));
 $("dnd-btn").addEventListener("click", () => {
   dnd = !dnd;
   $("dnd-btn").dataset.on = String(dnd);
+  $("dnd-btn").textContent = dnd ? "DND on" : "DND off";
   $("set-dnd").dataset.on = String(dnd);
 });
 $("set-dnd").addEventListener("click", () => {
   dnd = !dnd;
   $("set-dnd").dataset.on = String(dnd);
   $("dnd-btn").dataset.on = String(dnd);
+  $("dnd-btn").textContent = dnd ? "DND on" : "DND off";
 });
-scrim.addEventListener("click", closeModals);
-document.querySelectorAll("[data-close]").forEach((btn) => btn.addEventListener("click", closeModals));
 $("search").addEventListener("input", (event) => { query = event.target.value; renderInbox(); });
+document.querySelectorAll(".nav-item").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.view)));
+document.querySelectorAll("[data-view-jump]").forEach((button) => button.addEventListener("click", () => switchView(button.dataset.viewJump)));
 
 function wireSeg(id, callback) {
   const group = $(id);
@@ -380,21 +415,13 @@ $("chips").querySelectorAll(".chip").forEach((chip) => {
   });
 });
 
-document.querySelectorAll("[data-demo]").forEach((button) => {
-  button.addEventListener("click", () => {
-    const kind = button.dataset.demo;
-    spawnToast({
-      title: kind === "approval" ? "Approval needed" : `${kind[0].toUpperCase()}${kind.slice(1)} notification`,
-      message: kind === "approval" ? "Agent wants permission to continue." : "This is a local UI preview toast.",
-      priority: kind === "error" ? "high" : "medium",
-      source: kind === "error" ? "ci@github" : "anotify@local",
-      kind,
-    });
-  });
+document.querySelectorAll("[data-sample]").forEach((button) => {
+  button.addEventListener("click", () => spawnToast(SAMPLE_NOTIFICATIONS[button.dataset.sample]));
 });
 
 setStatus("connecting");
 renderInbox();
-updateInboxButton();
+renderRecent();
+updateMetrics();
 setupListeners();
 loadConfig();

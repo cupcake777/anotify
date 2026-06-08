@@ -387,6 +387,78 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the clear_notifications command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-clear-notifications",
+          "markdownDescription": "Enables the clear_notifications command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_config command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-config",
+          "markdownDescription": "Enables the get_config command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the get_notifications command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-get-notifications",
+          "markdownDescription": "Enables the get_notifications command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the reconnect command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-reconnect",
+          "markdownDescription": "Enables the reconnect command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the update_config command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-update-config",
+          "markdownDescription": "Enables the update_config command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the verify_connection command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-verify-connection",
+          "markdownDescription": "Enables the verify_connection command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the clear_notifications command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-clear-notifications",
+          "markdownDescription": "Denies the clear_notifications command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_config command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-config",
+          "markdownDescription": "Denies the get_config command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the get_notifications command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-get-notifications",
+          "markdownDescription": "Denies the get_notifications command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the reconnect command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-reconnect",
+          "markdownDescription": "Denies the reconnect command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the update_config command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-update-config",
+          "markdownDescription": "Denies the update_config command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the verify_connection command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-verify-connection",
+          "markdownDescription": "Denies the verify_connection command without any pre-configured scope."
+        },
+        {
           "description": "This permission set configures if your\napplication can enable or disable auto\nstarting the application on boot.\n\n#### Granted Permissions\n\nIt allows all to check, enable and\ndisable the automatic start on boot.\n\n\n#### This default permission set includes:\n\n- `allow-enable`\n- `allow-disable`\n- `allow-is-enabled`",
           "type": "string",
           "const": "autostart:default",

@@ -7,97 +7,135 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="stage-label">live relay · app toast preview</div>
-
-  <aside class="panel">
-    <div class="brand-row">
-      <img src="assets/01_default.png" alt="anotify bird" class="mascot" width="46" height="46" />
-      <div>
-        <h1><span id="status-dot" class="dot disconnected"></span>anotify</h1>
-        <p id="ws-status" class="sub">○ Connecting...</p>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand-card">
+        <img src="assets/01_default.png" alt="anotify bird" class="mascot" width="54" height="54" />
+        <div>
+          <h1>anotify</h1>
+          <p>desktop relay</p>
+        </div>
       </div>
-    </div>
+      <nav class="nav-list" aria-label="Dashboard sections">
+        <button class="nav-item active" data-view="overview">Overview</button>
+        <button class="nav-item" data-view="inbox">Inbox <span id="nav-inbox-count">0</span></button>
+        <button class="nav-item" data-view="settings">Settings</button>
+      </nav>
+      <div class="sidebar-foot">
+        <span class="mini-label">status</span>
+        <div class="mini-status"><span id="status-dot" class="dot connecting"></span><span id="ws-status">Connecting</span></div>
+      </div>
+    </aside>
 
-    <div class="grid">
-      <button class="btn" data-demo="message">🆕 Message</button>
-      <button class="btn" data-demo="approval">❓ Approval</button>
-      <button class="btn" data-demo="complete">✅ Complete</button>
-      <button class="btn" data-demo="error">⚠️ Error</button>
-      <button class="btn wide" id="test-btn">🔔 Send Test</button>
-    </div>
+    <main class="workspace">
+      <section class="topbar">
+        <div>
+          <p class="eyebrow">Control panel</p>
+          <h2 id="view-title">Overview</h2>
+        </div>
+        <div class="top-actions">
+          <button class="btn ghost" id="dnd-btn" data-on="false">DND off</button>
+          <button class="btn" id="verify-btn">Verify connection</button>
+        </div>
+      </section>
 
-    <div class="divider"></div>
+      <section class="view active" id="view-overview">
+        <div class="hero-grid">
+          <article class="card status-card">
+            <div class="card-head"><span>Connection</span><strong id="connection-state">Connecting</strong></div>
+            <div class="metric-row">
+              <div><b id="metric-inbox">0</b><span>Inbox</span></div>
+              <div><b id="metric-pending">0</b><span>Needs action</span></div>
+              <div><b id="metric-live">0</b><span>On screen</span></div>
+            </div>
+            <div class="config-strip">
+              <span id="server-summary">Server not configured</span>
+              <span id="token-summary">Token not configured</span>
+            </div>
+          </article>
 
-    <div class="grid">
-      <button class="btn" id="dnd-btn" data-on="false">🔕 DND</button>
-      <button class="btn" id="clear-btn">🗑 Clear</button>
-      <button class="btn wide" id="inbox-btn">📥 Inbox (0)</button>
-      <button class="btn wide" id="settings-btn">⚙️ Settings</button>
-    </div>
-  </aside>
+          <article class="card sample-card">
+            <div class="card-head"><span>Notification sample</span><button class="link-btn" data-sample="message">Show sample</button></div>
+            <div class="sample-note">通知样式作为辅助样例，不占用控制台主体空间。</div>
+            <div class="sample-row">
+              <button class="pill" data-sample="approval">Approval</button>
+              <button class="pill" data-sample="complete">Complete</button>
+              <button class="pill" data-sample="error">Error</button>
+            </div>
+          </article>
+        </div>
+
+        <div class="content-grid">
+          <article class="card">
+            <div class="card-head"><span>Recent notifications</span><button class="link-btn" data-view-jump="inbox">Open inbox</button></div>
+            <div class="compact-list" id="recent-list"><p class="empty">No notifications yet.</p></div>
+          </article>
+
+          <article class="card">
+            <div class="card-head"><span>Quick controls</span></div>
+            <div class="control-list">
+              <button class="control-row" id="clear-btn"><span>Clear local inbox</span><small>Remove dashboard history and visible toasts</small></button>
+              <button class="control-row" id="settings-shortcut"><span>Edit connection</span><small>Server URL and token replacement</small></button>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section class="view" id="view-inbox">
+        <article class="card full-card">
+          <div class="card-head inbox-head">
+            <span>Inbox</span>
+            <input id="search" class="search" placeholder="Search title / message / source" />
+          </div>
+          <div class="chips" id="chips"></div>
+          <div class="modal-list" id="notifications"><p class="empty">No notifications yet.</p></div>
+          <div class="list-foot"><span id="inbox-count">0 items</span></div>
+        </article>
+      </section>
+
+      <section class="view" id="view-settings">
+        <form id="settings-form" class="settings-layout">
+          <article class="card full-card">
+            <div class="card-head"><span>Connection</span><strong id="privacy-state">Private by default</strong></div>
+            <p class="privacy-note">已保存的 server 和 token 不会回填到界面。需要更换时才输入新值。</p>
+            <label>Server URL</label>
+            <input type="text" id="cfg-server" placeholder="Leave empty to keep existing server" autocomplete="off" />
+            <label>New token</label>
+            <input type="password" id="cfg-token" placeholder="Leave empty to keep existing token" autocomplete="new-password" />
+            <div class="token-meter" id="config-current">Current config: not configured</div>
+          </article>
+
+          <article class="card full-card">
+            <div class="card-head"><span>Toast behavior</span></div>
+            <div class="set-row"><span>Position</span><div class="seg" id="set-pos">
+              <button type="button" data-v="br" data-on="true">Bottom right</button>
+              <button type="button" data-v="bl">Bottom left</button>
+              <button type="button" data-v="tr">Top right</button>
+              <button type="button" data-v="tl">Top left</button>
+            </div></div>
+            <div class="set-row"><span>Max visible</span><div class="seg" id="set-max">
+              <button type="button" data-v="3">3</button>
+              <button type="button" data-v="4" data-on="true">4</button>
+              <button type="button" data-v="6">6</button>
+            </div></div>
+            <div class="set-row"><span>Theme</span><div class="seg" id="set-theme">
+              <button type="button" data-v="cream" data-on="true">Cream</button>
+              <button type="button" data-v="retro">Retro</button>
+              <button type="button" data-v="dark">Dark</button>
+            </div></div>
+            <div class="set-row"><span>Do not disturb</span><button type="button" class="switch" id="set-dnd" data-on="false" aria-label="Toggle DND"></button></div>
+          </article>
+
+          <div class="settings-actions">
+            <button type="submit" class="btn primary" id="save-btn">Save settings</button>
+            <button type="button" class="btn" id="settings-verify-btn">Verify connection</button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </div>
 
   <main id="stack" aria-live="polite"></main>
-
-  <div class="scrim" id="scrim"></div>
-
-  <section class="modal" id="inbox-modal" aria-label="Inbox">
-    <div class="modal-head">
-      <h2>📥 Inbox</h2>
-      <input id="search" class="search" placeholder="search title / message / source…" />
-      <button class="x" data-close="inbox">×</button>
-    </div>
-    <div class="chips" id="chips"></div>
-    <div class="modal-list" id="notifications">
-      <p class="empty">Nothing here yet 🐦</p>
-    </div>
-    <div class="modal-foot"><span id="inbox-count">0 items</span></div>
-  </section>
-
-  <section class="modal settings" id="settings-modal" aria-label="Settings">
-    <div class="modal-head">
-      <h2>⚙️ Settings</h2>
-      <span class="grow"></span>
-      <button class="x" data-close="settings">×</button>
-    </div>
-    <form id="settings-form" class="settings-form">
-      <div class="set-group">
-        <h3>Connection</h3>
-        <label>Server URL</label>
-        <input type="text" id="cfg-server" placeholder="https://notify.bioinfo.pro" />
-        <label>Token</label>
-        <input type="password" id="cfg-token" placeholder="Enter your anotify token" />
-      </div>
-      <div class="set-group">
-        <h3>Toast Layout</h3>
-        <div class="set-row"><span>Position</span><div class="seg" id="set-pos">
-          <button type="button" data-v="br" data-on="true">↘ BR</button>
-          <button type="button" data-v="bl">↙ BL</button>
-          <button type="button" data-v="tr">↗ TR</button>
-          <button type="button" data-v="tl">↖ TL</button>
-        </div></div>
-        <div class="set-row"><span>Max on screen</span><div class="seg" id="set-max">
-          <button type="button" data-v="3">3</button>
-          <button type="button" data-v="4" data-on="true">4</button>
-          <button type="button" data-v="6">6</button>
-        </div></div>
-      </div>
-      <div class="set-group">
-        <h3>Appearance</h3>
-        <div class="set-row"><span>Theme</span><div class="seg" id="set-theme">
-          <button type="button" data-v="cream" data-on="true">cream</button>
-          <button type="button" data-v="retro">retro</button>
-          <button type="button" data-v="dark">dark</button>
-        </div></div>
-        <div class="set-row"><span>Do Not Disturb</span><button type="button" class="switch" id="set-dnd" data-on="false"></button></div>
-      </div>
-      <div class="set-actions">
-        <button type="submit" class="btn primary" id="save-btn">💾 Save Settings</button>
-        <button type="button" class="btn" id="settings-test-btn">🔔 Send Test</button>
-      </div>
-      <p class="hint">Settings are stored in <code>~/.anotify.json</code></p>
-    </form>
-  </section>
-
   <footer>anotify v0.1.0</footer>
   <script src="app.js"></script>
 </body>

@@ -12,7 +12,7 @@
     "allow-update-config",
     "allow-get-config",
     "allow-clear-notifications",
-    "allow-send-test-notification",
+    "allow-verify-connection",
     "allow-reconnect"
   ]
 }

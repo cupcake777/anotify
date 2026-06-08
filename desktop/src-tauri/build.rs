@@ -5,7 +5,7 @@ fn main() {
             "update_config",
             "get_config",
             "clear_notifications",
-            "send_test_notification",
+            "verify_connection",
             "reconnect",
         ]),
     ))
