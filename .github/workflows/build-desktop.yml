@@ -22,8 +22,21 @@ jobs:
           node-version: 22
       - run: pnpm install
         working-directory: desktop
-      - run: pnpm tauri build
+      - name: Build Windows MSI
+        run: pnpm tauri build --bundles msi
         working-directory: desktop
+      - name: Build Windows NSIS installer
+        shell: pwsh
+        working-directory: desktop
+        run: |
+          for ($i = 1; $i -le 3; $i++) {
+            pnpm tauri build --bundles nsis
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Host "NSIS build attempt $i failed; retrying after backoff"
+            Start-Sleep -Seconds (15 * $i)
+          }
+          Write-Host "NSIS installer build failed after retries; MSI artifact is still available."
+          exit 0
       - uses: actions/upload-artifact@v4
         with:
           name: anotify-windows
