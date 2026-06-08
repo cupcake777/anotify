@@ -49,17 +49,16 @@ fn read_config() -> (String, String) {
             return (
                 cfg["server"]
                     .as_str()
-                    .unwrap_or("wss://your-server.example/ws")
+                    .unwrap_or("wss://notify.bioinfo.pro/ws")
                     .to_string(),
                 cfg["token"].as_str().unwrap_or("").to_string(),
             );
         }
     }
     // Also try environment variables
-    let server = std::env::var("ANOTIFY_SERVER")
-        .unwrap_or_else(|_| "wss://your-server.example/ws".into());
-    let token = std::env::var("ANOTIFY_TOKEN")
-        .unwrap_or_default();
+    let server =
+        std::env::var("ANOTIFY_SERVER").unwrap_or_else(|_| "wss://notify.bioinfo.pro/ws".into());
+    let token = std::env::var("ANOTIFY_TOKEN").unwrap_or_default();
     (server, token)
 }
 
@@ -109,6 +108,43 @@ async fn get_config(state: tauri::State<'_, AppState>) -> Result<(String, String
 async fn clear_notifications(state: tauri::State<'_, AppState>) -> Result<(), String> {
     state.notifications.lock().await.clear();
     Ok(())
+}
+
+#[tauri::command]
+async fn send_test_notification(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let server = state.server_url.lock().await.clone();
+    let token = state.token.lock().await.clone();
+    let endpoint = server
+        .replace("wss://", "https://")
+        .replace("ws://", "http://")
+        .trim_end_matches("/ws")
+        .trim_end_matches('/')
+        .to_string()
+        + "/api/notify";
+
+    let response = reqwest::Client::new()
+        .post(&endpoint)
+        .bearer_auth(token)
+        .json(&serde_json::json!({
+            "title": "anotify test",
+            "message": "Settings test notification",
+            "priority": "high",
+            "source": "anotify-desktop"
+        }))
+        .send()
+        .await
+        .map_err(|e| format!("Failed to send test: {}", e))?;
+
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .unwrap_or_else(|_| "<empty response>".to_string());
+    if status.is_success() {
+        Ok(body)
+    } else {
+        Err(format!("{} {}", status, body))
+    }
 }
 
 #[tauri::command]
@@ -191,13 +227,8 @@ async fn start_ws_connection(
                                     }
                                 }
 
-                                // Emit typed notification to the dashboard (history list)
+                                // Emit to frontend; the app renders controlled in-window toast UI.
                                 let _ = app_handle.emit("notification", &notif);
-
-                                // Render the custom toast: forward the FULL payload
-                                // (summary/cwd/host/agent/kind/id…) to the transparent
-                                // always-on-top overlay window, replacing the native toast.
-                                let _ = app_handle.emit_to("toasts", "notification", &data);
                             }
                         }
                         Ok(Message::Close(_)) => break,
@@ -272,7 +303,8 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             let notifications: Arc<Mutex<Vec<Notification>>> = Arc::new(Mutex::new(vec![]));
 
             // Manage state
-            let ws_handle: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>> = Arc::new(Mutex::new(None));
+            let ws_handle: Arc<Mutex<Option<tauri::async_runtime::JoinHandle<()>>>> =
+                Arc::new(Mutex::new(None));
             app.manage(AppState {
                 server_url: Arc::new(Mutex::new(server_url.clone())),
                 token: Arc::new(Mutex::new(token.clone())),
@@ -316,14 +348,17 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
 
             let tray_icon = match app.default_window_icon().cloned() {
                 Some(icon) => icon,
-                None => match tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png")) {
-                    Ok(icon) => icon,
-                    Err(e) => {
-                        eprintln!("[anotify] Failed to load tray icon: {}", e);
-                        // Create a minimal 1x1 transparent icon as fallback
-                        tauri::image::Image::new(&[0, 0, 0, 0], 1, 1)
+                None => {
+                    match tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon.png"))
+                    {
+                        Ok(icon) => icon,
+                        Err(e) => {
+                            eprintln!("[anotify] Failed to load tray icon: {}", e);
+                            // Create a minimal 1x1 transparent icon as fallback
+                            tauri::image::Image::new(&[0, 0, 0, 0], 1, 1)
+                        }
                     }
-                },
+                }
             };
             let _tray = TrayIconBuilder::new()
                 .icon(tray_icon)
@@ -371,6 +406,7 @@ fn run_app() -> Result<(), Box<dyn std::error::Error>> {
             update_config,
             get_config,
             clear_notifications,
+            send_test_notification,
             reconnect,
         ])
         .run(tauri::generate_context!())?;

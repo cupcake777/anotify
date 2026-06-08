@@ -1,20 +1,18 @@
 {
   "identifier": "default",
   "description": "Default capabilities",
-  "windows": [
-    "main",
-    "toasts"
-  ],
+  "windows": ["main"],
   "permissions": [
     "core:default",
-    "core:event:default",
-    "core:window:allow-show",
-    "core:window:allow-hide",
-    "core:window:allow-set-size",
-    "core:window:allow-set-position",
-    "core:window:allow-current-monitor",
+    "core:event:allow-listen",
     "shell:allow-open",
     "notification:default",
-    "autostart:default"
+    "autostart:default",
+    "allow-get-notifications",
+    "allow-update-config",
+    "allow-get-config",
+    "allow-clear-notifications",
+    "allow-send-test-notification",
+    "allow-reconnect"
   ]
 }

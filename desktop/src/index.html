@@ -7,52 +7,98 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- ── Header ── -->
-  <header>
-    <img src="assets/01_default.png" alt="anotify bird" class="mascot" width="48" height="48" />
-    <div>
-      <h1>anotify</h1>
-      <p class="tagline">Tiny messages. Big heart. 💙</p>
-    </div>
-    <span id="status-dot" class="dot disconnected" title="Disconnected"></span>
-  </header>
+  <div class="stage-label">live relay · app toast preview</div>
 
-  <!-- ── Tabs ── -->
-  <nav class="tabs">
-    <button class="tab active" data-tab="history">📋 History</button>
-    <button class="tab" data-tab="settings">⚙ Settings</button>
-  </nav>
+  <aside class="panel">
+    <div class="brand-row">
+      <img src="assets/01_default.png" alt="anotify bird" class="mascot" width="46" height="46" />
+      <div>
+        <h1><span id="status-dot" class="dot disconnected"></span>anotify</h1>
+        <p id="ws-status" class="sub">○ Connecting...</p>
+      </div>
+    </div>
 
-  <!-- ── History Tab ── -->
-  <section id="tab-history" class="tab-content active">
-    <div class="list-header">
-      <span id="ws-status" class="ws-badge">○ Connecting...</span>
-      <button id="clear-btn" class="btn-clear" title="Clear all">🗑 Clear</button>
+    <div class="grid">
+      <button class="btn" data-demo="message">🆕 Message</button>
+      <button class="btn" data-demo="approval">❓ Approval</button>
+      <button class="btn" data-demo="complete">✅ Complete</button>
+      <button class="btn" data-demo="error">⚠️ Error</button>
+      <button class="btn wide" id="test-btn">🔔 Send Test</button>
     </div>
-    <div id="notifications" class="list">
-      <p class="empty">No notifications yet. Waiting for messages...</p>
+
+    <div class="divider"></div>
+
+    <div class="grid">
+      <button class="btn" id="dnd-btn" data-on="false">🔕 DND</button>
+      <button class="btn" id="clear-btn">🗑 Clear</button>
+      <button class="btn wide" id="inbox-btn">📥 Inbox (0)</button>
+      <button class="btn wide" id="settings-btn">⚙️ Settings</button>
     </div>
+  </aside>
+
+  <main id="stack" aria-live="polite"></main>
+
+  <div class="scrim" id="scrim"></div>
+
+  <section class="modal" id="inbox-modal" aria-label="Inbox">
+    <div class="modal-head">
+      <h2>📥 Inbox</h2>
+      <input id="search" class="search" placeholder="search title / message / source…" />
+      <button class="x" data-close="inbox">×</button>
+    </div>
+    <div class="chips" id="chips"></div>
+    <div class="modal-list" id="notifications">
+      <p class="empty">Nothing here yet 🐦</p>
+    </div>
+    <div class="modal-foot"><span id="inbox-count">0 items</span></div>
   </section>
 
-  <!-- ── Settings Tab ── -->
-  <section id="tab-settings" class="tab-content">
-    <form id="settings-form">
-      <label>Server URL</label>
-      <input type="text" id="cfg-server" placeholder="wss://your-server.example/ws" />
-
-      <label>Token</label>
-      <input type="password" id="cfg-token" placeholder="Enter your anotify token" />
-
-      <button type="submit" class="btn">💾 Save Settings</button>
+  <section class="modal settings" id="settings-modal" aria-label="Settings">
+    <div class="modal-head">
+      <h2>⚙️ Settings</h2>
+      <span class="grow"></span>
+      <button class="x" data-close="settings">×</button>
+    </div>
+    <form id="settings-form" class="settings-form">
+      <div class="set-group">
+        <h3>Connection</h3>
+        <label>Server URL</label>
+        <input type="text" id="cfg-server" placeholder="https://notify.bioinfo.pro" />
+        <label>Token</label>
+        <input type="password" id="cfg-token" placeholder="Enter your anotify token" />
+      </div>
+      <div class="set-group">
+        <h3>Toast Layout</h3>
+        <div class="set-row"><span>Position</span><div class="seg" id="set-pos">
+          <button type="button" data-v="br" data-on="true">↘ BR</button>
+          <button type="button" data-v="bl">↙ BL</button>
+          <button type="button" data-v="tr">↗ TR</button>
+          <button type="button" data-v="tl">↖ TL</button>
+        </div></div>
+        <div class="set-row"><span>Max on screen</span><div class="seg" id="set-max">
+          <button type="button" data-v="3">3</button>
+          <button type="button" data-v="4" data-on="true">4</button>
+          <button type="button" data-v="6">6</button>
+        </div></div>
+      </div>
+      <div class="set-group">
+        <h3>Appearance</h3>
+        <div class="set-row"><span>Theme</span><div class="seg" id="set-theme">
+          <button type="button" data-v="cream" data-on="true">cream</button>
+          <button type="button" data-v="retro">retro</button>
+          <button type="button" data-v="dark">dark</button>
+        </div></div>
+        <div class="set-row"><span>Do Not Disturb</span><button type="button" class="switch" id="set-dnd" data-on="false"></button></div>
+      </div>
+      <div class="set-actions">
+        <button type="submit" class="btn primary" id="save-btn">💾 Save Settings</button>
+        <button type="button" class="btn" id="settings-test-btn">🔔 Send Test</button>
+      </div>
+      <p class="hint">Settings are stored in <code>~/.anotify.json</code></p>
     </form>
-    <p class="hint">Settings are stored in <code>~/.anotify.json</code></p>
   </section>
 
-  <!-- ── Footer ── -->
-  <footer>
-    <span>anotify v0.3.0</span>
-  </footer>
-
+  <footer>anotify v0.1.0</footer>
   <script src="app.js"></script>
 </body>
 </html>

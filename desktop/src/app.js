@@ -1,217 +1,387 @@
-// ═══════════════════════════════════════════════════
-// anotify — desktop frontend
-// ═══════════════════════════════════════════════════
-
 const { invoke } = window.__TAURI__?.core ?? {};
 const { listen } = window.__TAURI__?.event ?? {};
 
-// Debug: show Tauri API status
-console.log("[anotify] __TAURI__:", window.__TAURI__ ? "OK" : "MISSING");
-console.log("[anotify] invoke:", typeof invoke);
-console.log("[anotify] listen:", typeof listen);
+const $ = (id) => document.getElementById(id);
+const statusDot = $("status-dot");
+const wsStatus = $("ws-status");
+const stack = $("stack");
+const inboxList = $("notifications");
+const inboxBtn = $("inbox-btn");
+const inboxCount = $("inbox-count");
+const scrim = $("scrim");
+const inboxModal = $("inbox-modal");
+const settingsModal = $("settings-modal");
+const settingsForm = $("settings-form");
+const cfgServer = $("cfg-server");
+const cfgToken = $("cfg-token");
+const saveBtn = $("save-btn");
 
-// Show debug banner if Tauri API is missing
-if (!window.__TAURI__) {
-  document.addEventListener("DOMContentLoaded", () => {
-    const d = document.createElement("div");
-    d.style.cssText = "position:fixed;top:0;left:0;right:0;background:#e05555;color:white;padding:6px 12px;font-size:12px;z-index:9999;font-family:monospace";
-    d.textContent = "⚠ Tauri API not loaded — settings won't work. Check console (F12).";
-    document.body.prepend(d);
-  });
-}
-
-// ═══════ DOM refs ═══════
-const $statusDot = document.getElementById("status-dot");
-const $wsStatus = document.getElementById("ws-status");
-const $notifications = document.getElementById("notifications");
-const $tabBtns = document.querySelectorAll(".tab");
-const $tabContents = document.querySelectorAll(".tab-content");
-const $settingsForm = document.getElementById("settings-form");
-const $cfgServer = document.getElementById("cfg-server");
-const $cfgToken = document.getElementById("cfg-token");
-const $clearBtn = document.getElementById("clear-btn");
-
-// ═══════ Priority emoji ═══════
-const PRIORITY_ICONS = {
-  low: "🐦",
-  medium: "💌",
-  high: "⚠️",
-  critical: "🚨",
+const ACCENT = {
+  complete: "var(--k-complete)",
+  error: "var(--k-error)",
+  approval: "var(--k-approval)",
+  message: "var(--k-message)",
+  info: "var(--k-info)",
 };
+const ACCENT_HEX = {
+  complete: "#48b079",
+  error: "#ec6a6a",
+  approval: "#eba33a",
+  message: "#5aa6f0",
+  info: "#93a6c2",
+};
+const ICONS = {
+  complete: "assets/04_task_complete.png",
+  error: "assets/06_error.png",
+  approval: "assets/03_approval_required.png",
+  message: "assets/02_new_message.png",
+  info: "assets/01_default.png",
+};
+const HOSTMAP = { hpc: "H", vps: "V", local: "M", localhost: "M", mac: "M", ci: "C", github: "G" };
+const DURATION = { low: 5000, medium: 5000, high: 8000, critical: 0 };
+const RULES = [
+  [["error", "fail", "failed", "crash", "exception", "traceback"], "error"],
+  [["approval", "approve", "permission", "confirm", "authorize", "review"], "approval"],
+  [["complete", "completed", "done", "success", "succeeded", "finished", "passed"], "complete"],
+  [["message", "msg", "reply", "new "], "message"],
+];
 
-// ═══════ Tab switching ═══════
-$tabBtns.forEach((btn) => {
-  btn.addEventListener("click", () => {
-    const tab = btn.dataset.tab;
-    $tabBtns.forEach((b) => b.classList.remove("active"));
-    $tabContents.forEach((c) => c.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById(`tab-${tab}`).classList.add("active");
-  });
-});
+let inbox = [];
+let dnd = false;
+let pos = "br";
+let theme = "cream";
+let maxStack = 4;
+let filter = "all";
+let query = "";
+let layoutLeft = false;
 
-// ═══════ Load notifications ═══════
-async function loadNotifications() {
-  if (!invoke) return;
-  try {
-    const list = await invoke("get_notifications");
-    renderNotifications(list);
-  } catch (e) {
-    console.error("Failed to load notifications:", e);
+function classify(title = "", message = "", source = "", priority = "medium") {
+  const text = `${source} ${title} ${message}`.toLowerCase();
+  for (const [words, kind] of RULES) {
+    if (words.some((word) => text.includes(word))) return kind;
   }
+  return priority === "critical" ? "error" : "info";
 }
 
-function renderNotifications(list) {
-  if (!list || list.length === 0) {
-    $notifications.innerHTML =
-      '<p class="empty">No notifications yet. Waiting for messages...</p>';
+function escapeHtml(text = "") {
+  const div = document.createElement("div");
+  div.textContent = String(text);
+  return div.innerHTML;
+}
+
+function timestampMs(ts) {
+  if (!ts) return Date.now();
+  return ts > 100000000000 ? ts : ts * 1000;
+}
+
+function hhmm(ts) {
+  const d = new Date(timestampMs(ts));
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
+function parseSource(n) {
+  let agent = n.agent;
+  let host = n.host;
+  const src = n.source || "agent";
+  if (src.includes("@")) {
+    const parts = src.split("@");
+    agent = agent || parts[0];
+    host = host || parts[1];
+  }
+  agent = agent || src;
+  host = host || "";
+  const key = (host.split(/[-.]/)[0] || "").toLowerCase();
+  return { agent, host, initial: HOSTMAP[key] || (host ? host[0].toUpperCase() : "·") };
+}
+
+function oneLiner(n) {
+  return n.summary || (n.message || "").split("\n")[0] || "Notification";
+}
+
+function normalizeNotification(n) {
+  const kind = n.kind || classify(n.title, n.message, n.source, n.priority);
+  return {
+    ...n,
+    id: n.id || `n${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`,
+    kind,
+    priority: n.priority || "medium",
+    timestamp: n.timestamp || Date.now() / 1000,
+    resolution: n.resolution || null,
+  };
+}
+
+function setStatus(status) {
+  const connected = status === "connected";
+  statusDot.className = `dot ${connected ? "connected" : "disconnected"}`;
+  wsStatus.textContent = connected ? "● Connected" : "○ Disconnected";
+}
+
+function addInbox(notification) {
+  const item = normalizeNotification(notification);
+  inbox.unshift(item);
+  if (inbox.length > 200) inbox.length = 200;
+  renderInbox();
+  updateInboxButton();
+  return item;
+}
+
+function updateInboxButton() {
+  const unresolved = inbox.filter((item) => (item.kind === "approval" || item.priority === "critical") && !item.resolution).length;
+  inboxBtn.textContent = `📥 Inbox (${inbox.length})${unresolved ? ` · ${unresolved}!` : ""}`;
+}
+
+function renderInbox() {
+  const q = query.toLowerCase();
+  const items = inbox.filter((item) => {
+    const text = `${item.title || ""} ${item.message || ""} ${item.source || ""}`.toLowerCase();
+    return (filter === "all" || item.kind === filter) && (!q || text.includes(q));
+  });
+  inboxCount.textContent = `${items.length} of ${inbox.length}`;
+  if (!items.length) {
+    inboxList.innerHTML = '<p class="empty">Nothing here yet 🐦</p>';
     return;
   }
-
-  $notifications.innerHTML = list
-    .slice()
-    .reverse()
-    .map(
-      (n) => `
-    <div class="notif-item priority-${n.priority}">
-      <span class="notif-priority">${PRIORITY_ICONS[n.priority] || "📨"}</span>
-      <div class="notif-body">
-        <div class="notif-title">${escapeHtml(n.title)}</div>
-        <div class="notif-msg">${escapeHtml(n.message)}</div>
-        <div class="notif-meta">
-          <span>${escapeHtml(n.source)}</span>
-          <span>${formatTime(n.timestamp)}</span>
-          <span>${n.priority}</span>
-        </div>
-      </div>
-    </div>`
-    )
-    .join("");
+  inboxList.innerHTML = items.map((item) => {
+    const src = parseSource(item);
+    return `<article class="ix" data-id="${item.id}" style="--ac:${ACCENT_HEX[item.kind] || ACCENT_HEX.info}">
+      <div class="av"><img src="${ICONS[item.kind] || ICONS.info}" alt=""></div>
+      <div><div class="t">${escapeHtml(item.title || "Notification")}</div><div class="s">${escapeHtml(src.host ? `${src.host} · ` : "")}${escapeHtml(oneLiner(item))}</div></div>
+      <span class="when">${hhmm(item.timestamp)}</span>
+    </article>`;
+  }).join("");
+  inboxList.querySelectorAll(".ix").forEach((row) => {
+    row.addEventListener("click", () => {
+      const old = row.nextElementSibling;
+      if (old?.classList.contains("ix-full")) {
+        old.remove();
+        return;
+      }
+      const item = inbox.find((x) => x.id === row.dataset.id);
+      const full = document.createElement("div");
+      full.className = "ix-full";
+      full.textContent = item?.message || oneLiner(item || {});
+      row.after(full);
+    });
+  });
 }
 
-function addNotification(notif) {
-  const el = document.createElement("div");
-  el.className = `notif-item priority-${notif.priority} highlight`;
-  el.innerHTML = `
-    <span class="notif-priority">${PRIORITY_ICONS[notif.priority] || "📨"}</span>
-    <div class="notif-body">
-      <div class="notif-title">${escapeHtml(notif.title)}</div>
-      <div class="notif-msg">${escapeHtml(notif.message)}</div>
-      <div class="notif-meta">
-        <span>${escapeHtml(notif.source)}</span>
-        <span>${formatTime(notif.timestamp)}</span>
-        <span>${notif.priority}</span>
-      </div>
-    </div>`;
+function spawnToast(raw) {
+  const item = raw._replay ? raw : addInbox(raw);
+  if (dnd && item.priority !== "critical") return;
+  const kind = item.kind;
+  const sticky = item.priority === "critical" || kind === "approval";
+  const duration = sticky ? 0 : (DURATION[item.priority] ?? 5000);
+  const src = parseSource(item);
+  const summary = oneLiner(item);
+  const hasMore = item.message && item.message.trim() !== summary.trim();
 
-  // Remove empty state
-  const empty = $notifications.querySelector(".empty");
-  if (empty) empty.remove();
+  const toast = document.createElement("article");
+  toast.className = `toast${item.priority === "critical" ? " crit" : ""}${sticky ? " sticky" : ""}${kind === "approval" ? " open" : ""}`;
+  toast.classList.toggle("left", layoutLeft);
+  toast.style.setProperty("--accent", ACCENT[kind] || ACCENT.info);
+  toast.innerHTML = `
+    <div class="avatar"><img src="${ICONS[kind] || ICONS.info}" alt=""></div>
+    <div class="body">
+      <div class="row1"><div class="title">${escapeHtml(item.title || "Agent notification")}</div></div>
+      <div class="summary">${escapeHtml(summary)}</div>
+      <div class="meta"><span class="host" title="${escapeHtml(src.host || "unknown host")}">${escapeHtml(src.initial)}</span><span class="agent">${escapeHtml(src.agent)}</span><span class="time">${hhmm(item.timestamp)}</span></div>
+    </div>
+    ${hasMore ? `<div class="details"><div class="details-inner"><pre class="full">${escapeHtml(item.message)}</pre></div></div>` : ""}
+    ${kind === "approval" ? '<div class="actionbar"><button class="act accept" data-act="accepted">Accept</button><button class="act deny" data-act="denied">Deny</button></div>' : ""}
+    ${item.priority === "critical" ? '<div class="actionbar"><button class="act ack" data-act="acknowledged">Acknowledge</button><button class="act ghost" data-act="inbox">Open Inbox</button></div>' : ""}
+    <button class="close" title="Dismiss">×</button>
+    ${duration > 0 ? `<div class="prog" style="animation-duration:${duration}ms"></div>` : ""}`;
 
-  $notifications.prepend(el);
+  stack.appendChild(toast);
+  while (stack.children.length > maxStack) hardRemove(stack.firstElementChild);
 
-  // Remove highlight after animation
-  setTimeout(() => el.classList.remove("highlight"), 2000);
-
-  // Limit displayed items
-  while ($notifications.children.length > 100) {
-    $notifications.lastChild?.remove();
-  }
+  let timer = duration > 0 ? setTimeout(() => dismiss(toast), duration) : null;
+  toast.addEventListener("mouseenter", () => {
+    toast.classList.add("paused");
+    if (timer) clearTimeout(timer);
+    timer = null;
+  });
+  toast.addEventListener("mouseleave", () => {
+    toast.classList.remove("paused");
+    if (duration > 0 && !timer) timer = setTimeout(() => dismiss(toast), 1600);
+  });
+  toast.addEventListener("click", (event) => {
+    if (event.target.closest(".act") || event.target.closest(".close")) return;
+    if (hasMore) toast.classList.toggle("open");
+  });
+  toast.querySelector(".close").addEventListener("click", () => dismiss(toast));
+  toast.querySelectorAll(".act").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const act = btn.dataset.act;
+      if (act === "inbox") {
+        openModal(inboxModal);
+        return;
+      }
+      item.resolution = act;
+      updateInboxButton();
+      const bar = toast.querySelector(".actionbar");
+      if (bar) bar.outerHTML = `<div class="resolved">✔ ${act}</div>`;
+      setTimeout(() => dismiss(toast), 850);
+    });
+  });
 }
 
-// ═══════ Clear notifications ═══════
-$clearBtn?.addEventListener("click", async () => {
-  if (!invoke) return;
-  try {
-    await invoke("clear_notifications");
-    $notifications.innerHTML =
-      '<p class="empty">No notifications yet. Waiting for messages...</p>';
-  } catch (e) {
-    console.error("Failed to clear notifications:", e);
-  }
-});
+function dismiss(toast) {
+  if (!toast || toast.classList.contains("out")) return;
+  toast.classList.add("out");
+  toast.addEventListener("animationend", () => hardRemove(toast), { once: true });
+  setTimeout(() => hardRemove(toast), 420);
+}
 
-// ═══════ Settings ═══════
+function hardRemove(toast) {
+  if (!toast || toast._gone) return;
+  toast._gone = true;
+  toast.remove();
+}
+
+function openModal(modal) {
+  scrim.classList.add("show");
+  modal.classList.add("show");
+}
+function closeModals() {
+  scrim.classList.remove("show");
+  inboxModal.classList.remove("show");
+  settingsModal.classList.remove("show");
+}
+
+function applyLayout() {
+  stack.classList.remove("pos-bl", "pos-tr", "pos-tl");
+  if (pos === "bl") stack.classList.add("pos-bl");
+  if (pos === "tr") stack.classList.add("pos-tr");
+  if (pos === "tl") stack.classList.add("pos-tl");
+  layoutLeft = pos === "bl" || pos === "tl";
+}
+function applyTheme() {
+  document.body.className = theme === "cream" ? "" : `theme-${theme}`;
+}
+
 async function loadConfig() {
   if (!invoke) return;
   try {
     const [server, token] = await invoke("get_config");
-    $cfgServer.value = server || "";
-    $cfgToken.value = token || "";
-  } catch (e) {
-    console.error("Failed to load config:", e);
+    cfgServer.value = server || "";
+    cfgToken.value = token || "";
+  } catch (err) {
+    console.error("Failed to load config:", err);
   }
 }
 
-$settingsForm.addEventListener("submit", async (e) => {
-  e.preventDefault();
-  if (!invoke) return;
+async function sendTestNotification() {
+  if (!invoke) {
+    spawnToast({ title: "Tauri API missing", message: "Run this inside the desktop app.", priority: "high", source: "anotify@local" });
+    return;
+  }
   try {
-    await invoke("update_config", {
-      server: $cfgServer.value.trim(),
-      token: $cfgToken.value.trim(),
-    });
-    // Reconnect WebSocket with new config
-    try {
-      await invoke("reconnect");
-    } catch (re) {
-      console.error("Reconnect failed:", re);
-    }
-    // Show success feedback inline instead of alert
-    const btn = $settingsForm.querySelector('button[type="submit"]');
-    const original = btn.textContent;
-    btn.textContent = "✅ Saved!";
-    btn.disabled = true;
-    setTimeout(() => {
-      btn.textContent = original;
-      btn.disabled = false;
-    }, 2000);
+    const result = await invoke("send_test_notification");
+    spawnToast({ title: "Test sent", message: result, priority: "medium", source: "anotify@local", kind: "complete" });
   } catch (err) {
-    console.error("Failed to save settings:", err);
-    alert("Failed to save settings.");
+    spawnToast({ title: "Test failed", message: String(err), priority: "high", source: "anotify@local", kind: "error" });
+  }
+}
+
+settingsForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  if (!invoke) return;
+  const original = saveBtn.textContent;
+  saveBtn.textContent = "Saving...";
+  saveBtn.disabled = true;
+  try {
+    await invoke("update_config", { server: cfgServer.value.trim(), token: cfgToken.value.trim() });
+    await invoke("reconnect");
+    saveBtn.textContent = "✅ Saved";
+    spawnToast({ title: "Settings saved", message: "Config persisted and WebSocket reconnect requested.", priority: "medium", source: "anotify@local", kind: "complete" });
+  } catch (err) {
+    saveBtn.textContent = "⚠️ Failed";
+    spawnToast({ title: "Save failed", message: String(err), priority: "high", source: "anotify@local", kind: "error" });
+  } finally {
+    setTimeout(() => {
+      saveBtn.textContent = original;
+      saveBtn.disabled = false;
+    }, 1800);
   }
 });
 
-// ═══════ Listen to Rust backend events ═══════
 async function setupListeners() {
-  if (!listen) return;
-
-  // New notification from WebSocket
-  await listen("notification", (event) => {
-    addNotification(event.payload);
-  });
-
-  // WebSocket status
-  await listen("ws-status", (event) => {
-    const status = event.payload;
-    $wsStatus.textContent =
-      status === "connected" ? "● Connected" : "○ Disconnected";
-    $statusDot.className = `dot ${status === "connected" ? "connected" : "disconnected"}`;
-  });
-
-  // Navigate to tab (from tray menu)
+  if (!listen) {
+    setStatus("disconnected");
+    return;
+  }
+  await listen("notification", (event) => spawnToast(event.payload));
+  await listen("ws-status", (event) => setStatus(event.payload));
   await listen("navigate", (event) => {
-    const tab = event.payload;
-    $tabBtns.forEach((b) => {
-      if (b.dataset.tab === tab) b.click();
+    if (event.payload === "settings") openModal(settingsModal);
+    else openModal(inboxModal);
+  });
+}
+
+$("clear-btn").addEventListener("click", async () => {
+  inbox = [];
+  renderInbox();
+  updateInboxButton();
+  stack.innerHTML = "";
+  if (invoke) await invoke("clear_notifications").catch(console.error);
+});
+$("inbox-btn").addEventListener("click", () => openModal(inboxModal));
+$("settings-btn").addEventListener("click", () => openModal(settingsModal));
+$("test-btn").addEventListener("click", sendTestNotification);
+$("settings-test-btn").addEventListener("click", sendTestNotification);
+$("dnd-btn").addEventListener("click", () => {
+  dnd = !dnd;
+  $("dnd-btn").dataset.on = String(dnd);
+  $("set-dnd").dataset.on = String(dnd);
+});
+$("set-dnd").addEventListener("click", () => {
+  dnd = !dnd;
+  $("set-dnd").dataset.on = String(dnd);
+  $("dnd-btn").dataset.on = String(dnd);
+});
+scrim.addEventListener("click", closeModals);
+document.querySelectorAll("[data-close]").forEach((btn) => btn.addEventListener("click", closeModals));
+$("search").addEventListener("input", (event) => { query = event.target.value; renderInbox(); });
+
+function wireSeg(id, callback) {
+  const group = $(id);
+  group.querySelectorAll("button").forEach((button) => {
+    button.addEventListener("click", () => {
+      group.querySelectorAll("button").forEach((b) => { b.dataset.on = String(b === button); });
+      callback(button.dataset.v);
     });
   });
 }
+wireSeg("set-pos", (value) => { pos = value; applyLayout(); });
+wireSeg("set-max", (value) => { maxStack = Number(value); });
+wireSeg("set-theme", (value) => { theme = value; applyTheme(); });
 
-// ═══════ Helpers ═══════
-function escapeHtml(text) {
-  const div = document.createElement("div");
-  div.textContent = text;
-  return div.innerHTML;
-}
+const chips = ["all", "message", "approval", "complete", "error", "info"];
+$("chips").innerHTML = chips.map((chip) => `<button class="chip" data-k="${chip}" data-on="${chip === "all"}">${chip}</button>`).join("");
+$("chips").querySelectorAll(".chip").forEach((chip) => {
+  chip.addEventListener("click", () => {
+    filter = chip.dataset.k;
+    $("chips").querySelectorAll(".chip").forEach((c) => { c.dataset.on = String(c === chip); });
+    renderInbox();
+  });
+});
 
-function formatTime(ts) {
-  if (!ts) return "";
-  const d = new Date(ts * 1000);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-}
+document.querySelectorAll("[data-demo]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const kind = button.dataset.demo;
+    spawnToast({
+      title: kind === "approval" ? "Approval needed" : `${kind[0].toUpperCase()}${kind.slice(1)} notification`,
+      message: kind === "approval" ? "Agent wants permission to continue." : "This is a local UI preview toast.",
+      priority: kind === "error" ? "high" : "medium",
+      source: kind === "error" ? "ci@github" : "anotify@local",
+      kind,
+    });
+  });
+});
 
-// ═══════ Init ═══════
+setStatus("connecting");
+renderInbox();
+updateInboxButton();
 setupListeners();
-loadNotifications();
 loadConfig();
