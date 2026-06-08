@@ -1,0 +1,82 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "anotify"
+version = "0.1.0"
+description = "Cross-platform remote notification system — menu bar app, CLI sender, WebSocket relay"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.9"
+keywords = [
+    "notifications",
+    "ai-agents",
+    "remote",
+    "cross-platform",
+    "hpc",
+    "websocket",
+    "toast",
+    "cli",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: System :: Monitoring",
+    "Topic :: Software Development :: Build Tools",
+    "Topic :: Communications",
+    "Topic :: Desktop Environment",
+    "Typing :: Typed",
+]
+dependencies = [
+    "websockets>=12.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+gui = ["pystray>=0.19", "Pillow>=10.0"]
+mac = ["rumps>=0.4.0", "Pillow>=10.0"]
+server = ["fastapi>=0.100", "uvicorn>=0.20", "pydantic>=2.0"]
+test = ["pytest>=8.0", "httpx>=0.27", "fastapi>=0.100", "pydantic>=2.0"]
+all = ["anotify[gui,mac,server,test]"]
+
+[project.urls]
+Homepage = "https://github.com/cupcake777/anotify"
+Repository = "https://github.com/cupcake777/anotify"
+Issues = "https://github.com/cupcake777/anotify/issues"
+Documentation = "https://github.com/cupcake777/anotify#readme"
+
+[project.scripts]
+anotify = "anotify.cli:main"
+anotify-gui = "anotify.gui:main"
+anotify-client = "anotify.client:main"
+anotify-mac = "anotify.mac_app:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/anotify"]
+
+[tool.hatch.build]
+include = [
+    "src/anotify/assets/*.png",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true

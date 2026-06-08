@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default capabilities","local":true,"windows":["main","toasts"],"permissions":["core:default","core:event:default","core:window:allow-show","core:window:allow-hide","core:window:allow-set-size","core:window:allow-set-position","core:window:allow-current-monitor","shell:allow-open","notification:default","autostart:default"]}}

@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>anotify</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- ── Header ── -->
+  <header>
+    <img src="assets/01_default.png" alt="anotify bird" class="mascot" width="48" height="48" />
+    <div>
+      <h1>anotify</h1>
+      <p class="tagline">Tiny messages. Big heart. 💙</p>
+    </div>
+    <span id="status-dot" class="dot disconnected" title="Disconnected"></span>
+  </header>
+
+  <!-- ── Tabs ── -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="history">📋 History</button>
+    <button class="tab" data-tab="settings">⚙ Settings</button>
+  </nav>
+
+  <!-- ── History Tab ── -->
+  <section id="tab-history" class="tab-content active">
+    <div class="list-header">
+      <span id="ws-status" class="ws-badge">○ Connecting...</span>
+      <button id="clear-btn" class="btn-clear" title="Clear all">🗑 Clear</button>
+    </div>
+    <div id="notifications" class="list">
+      <p class="empty">No notifications yet. Waiting for messages...</p>
+    </div>
+  </section>
+
+  <!-- ── Settings Tab ── -->
+  <section id="tab-settings" class="tab-content">
+    <form id="settings-form">
+      <label>Server URL</label>
+      <input type="text" id="cfg-server" placeholder="wss://your-server.example/ws" />
+
+      <label>Token</label>
+      <input type="password" id="cfg-token" placeholder="Enter your anotify token" />
+
+      <button type="submit" class="btn">💾 Save Settings</button>
+    </form>
+    <p class="hint">Settings are stored in <code>~/.anotify.json</code></p>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer>
+    <span>anotify v0.3.0</span>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
