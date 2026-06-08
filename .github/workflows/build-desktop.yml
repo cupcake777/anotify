@@ -103,8 +103,19 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
       - run: pnpm install
         working-directory: desktop
-      - run: pnpm tauri build
+      - name: Build Linux DEB/RPM
+        run: pnpm tauri build --bundles deb,rpm
         working-directory: desktop
+      - name: Build Linux AppImage
+        working-directory: desktop
+        run: |
+          for i in 1 2 3; do
+            pnpm tauri build --bundles appimage && exit 0
+            echo "AppImage build attempt $i failed; retrying after backoff"
+            sleep $((15 * i))
+          done
+          echo "AppImage build failed after retries; DEB/RPM artifacts are still available."
+          exit 0
       - uses: actions/upload-artifact@v4
         with:
           name: anotify-linux
