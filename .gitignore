@@ -1,1 +1,13 @@
 .secrets/
+.local/
+__pycache__/
+.pytest_cache/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+node_modules/
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/

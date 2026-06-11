@@ -282,7 +282,7 @@ pub fn emit_status(app: &AppHandle, connected: bool) {
 fn main() {
     let cfg = load_config();
     let state = AppState::new(cfg);
-    let reconnect = state.reconnect.clone();
+    let reconnect_signal = state.reconnect.clone();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -305,7 +305,7 @@ fn main() {
             let handle = app.handle().clone();
             // Spawn the WebSocket client on Tauri's async runtime.
             tauri::async_runtime::spawn(async move {
-                ws::run(handle, reconnect).await;
+                ws::run(handle, reconnect_signal).await;
             });
             Ok(())
         })
