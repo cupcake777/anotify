@@ -11,17 +11,17 @@
 }
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:transparent;overflow:hidden;font-family:'Baloo 2',system-ui,-apple-system,sans-serif;color:var(--navy)}
-#stack{position:fixed;right:14px;bottom:14px;display:flex;flex-direction:column-reverse;gap:12px;width:372px}
-.toast{position:relative;display:grid;grid-template-columns:60px 1fr;gap:12px;padding:12px 14px;overflow:hidden;cursor:pointer;
+#stack{position:fixed;right:10px;bottom:10px;display:flex;flex-direction:column-reverse;gap:8px;width:296px}
+.toast{position:relative;display:grid;grid-template-columns:44px 1fr;gap:10px;padding:10px 12px;overflow:hidden;cursor:pointer;
   background:linear-gradient(168deg,var(--cream) 0%,var(--cream-2) 100%);border:2.5px solid var(--line);border-radius:16px;
   box-shadow:2px 3px 0 rgba(11,36,71,.20),0 12px 28px -18px rgba(11,36,71,.45);transform-origin:right center;animation:pop .42s cubic-bezier(.2,1.15,.32,1) both}
 .toast.out{animation:bye .3s ease forwards}
 .toast.crit.out{animation:bye .3s ease forwards}
 .toast::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent,#93a6c2)}
 .toast.crit{animation:pop .42s cubic-bezier(.2,1.15,.32,1) both,glow 1.7s ease-in-out infinite .6s}
-.avatar{align-self:start;width:60px;height:60px;display:grid;place-items:center;border-radius:13px;
+.avatar{align-self:start;width:44px;height:44px;display:grid;place-items:center;border-radius:11px;
   background:radial-gradient(circle at 50% 44%,color-mix(in srgb,var(--accent) 22%,#fff) 0%,color-mix(in srgb,var(--accent) 8%,#fff) 72%,transparent 100%)}
-.sprite{width:56px;height:56px;display:block;image-rendering:auto;filter:drop-shadow(0 2px 1px rgba(11,36,71,.10));animation:bob 3.6s ease-in-out infinite}
+.sprite{width:40px;height:40px;display:block;image-rendering:auto;filter:drop-shadow(0 2px 1px rgba(11,36,71,.10));animation:bob 3.6s ease-in-out infinite}
 .sprite.nobob{animation-play-state:paused}
 .toast.paused .sprite{animation-play-state:paused}
 .body{min-width:0;align-self:center}
@@ -65,7 +65,7 @@ html,body{margin:0;height:100%;background:transparent;overflow:hidden;font-famil
 /* ===== anotify toast overlay — renders custom toasts from WS events =====
    Frames are sliced at runtime from the bundled transparent strips
    (assets/sprites/bird_<kind>_8f.png), so the bundle stays small and crisp. */
-const KINDS=['info','message','approval','complete','error','dnd'];
+const KINDS=['info','message','approval','complete','error'];
 const FRAMES={};
 function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=rej;i.src=src;});}
 async function loadFrames(){
@@ -90,7 +90,7 @@ function classify(t="",m="",s="",p="medium"){const x=(s+" "+t+" "+m).toLowerCase
   for(const [kw,k] of RULES){if(kw.some(w=>x.includes(w)))return k;} return p==="critical"?"error":"info";}
 const ACCENT={complete:"var(--k-complete)",error:"var(--k-error)",approval:"var(--k-approval)",message:"var(--k-message)",info:"var(--k-info)"};
 const DURATION={low:5000,medium:5000,high:8000,critical:0};
-const PACE={info:1100,message:480,approval:560,complete:560,error:440,dnd:1500};
+const PACE={info:1100,message:480,approval:560,complete:560,error:440};
 const HOSTMAP={hpc:"H",vps:"V",local:"M",localhost:"M",mac:"M",ci:"C",github:"G"};
 const stack=document.getElementById('stack');
 let motion='soft', soundOn=true, volume=0.40;
@@ -198,7 +198,7 @@ function spawnToast(n){
     ${(hasMore&&kind!=="approval"&&n.priority!=="critical")?`<div class="hint">tap to expand ⌄</div>`:``}`;
 
   stack.appendChild(el); showWin();
-  while(stack.children.length>5) hardRemove(stack.firstElementChild);
+  while(stack.children.length>3) hardRemove(stack.firstElementChild);
 
   const sp=new Sprite(el.querySelector('.sprite'),kind); sp.enter(); el._sprite=sp;
   if(soundOn||n.priority==='critical') sound.play(kind,n.priority);
@@ -209,8 +209,17 @@ function spawnToast(n){
   el.addEventListener('mouseleave',()=>{el.classList.remove('paused');sp.pause(false);if(dur>0&&!timer)timer=setTimeout(()=>dismiss(el),remaining(el));});
   el.addEventListener('click',(e)=>{if(e.target.closest('.act')||e.target.closest('.close'))return;if(kind==="approval")return;if(hasMore)el.classList.toggle('open');});
   el.querySelector('.close').addEventListener('click',()=>{if(timer)clearTimeout(timer);dismiss(el);});
-  el.querySelectorAll('.act').forEach(b=>b.addEventListener('click',()=>{
+  el.querySelectorAll('.act').forEach(b=>b.addEventListener('click',async()=>{
     const a=b.dataset.act; if(soundOn)sound.voice(a);
+    if(kind==='approval'&&n.approval_id&&n.callback_url&&window.__TAURI__?.core?.invoke){
+      try{
+        await window.__TAURI__.core.invoke('respond_approval',{approvalId:n.approval_id,choice:a,callbackUrl:n.callback_url});
+      }catch(e){
+        const bar=el.querySelector('.actionbar');
+        if(bar)bar.outerHTML=`<div class="resolved" style="color:var(--k-error)">\u26a0 ${esc(String(e))}</div>`;
+        return;
+      }
+    }
     const bar=el.querySelector('.actionbar'); const label=a==='accept'?'Approved':a==='deny'?'Denied':'Acknowledged';
     if(bar)bar.outerHTML=`<div class="resolved" style="color:${a==='deny'?'var(--k-error)':a==='accept'?'var(--k-complete)':'var(--muted)'}">${a==='deny'?'✕':'✔'} ${label}</div>`;
     setTimeout(()=>dismiss(el),850);
@@ -227,7 +236,7 @@ async function place(){
   try{
     const { currentMonitor, LogicalSize, LogicalPosition } = window.__TAURI__.window;
     const mon = await currentMonitor();
-    const W=400,H=660,m=10;
+    const W=320,H=420,m=10;
     await win.setSize(new LogicalSize(W,H));
     if(mon){const s=mon.scaleFactor; const sw=mon.size.width/s, sh=mon.size.height/s;
       await win.setPosition(new LogicalPosition(Math.round(sw-W-m), Math.round(sh-H-m)));}

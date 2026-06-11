@@ -99,7 +99,20 @@ anotify send "Training finished" --title "HPC" --priority high
 
 <br/>
 
-**④ Done!** — on your desktop:
+**④ Ask for a decision** — block until you tap Approve/Deny:
+
+```sh
+# exits 0 if approved, 1 if denied, 2 on timeout — gate anything on it
+if anotify approve "Deploy to prod?" --agent claude-code; then
+    ./deploy.sh
+fi
+```
+
+<sub>Outbound-only: the remote host just makes HTTP requests, so this works on locked-down clusters too.</sub>
+
+<br/>
+
+**⑤ Done!** — on your desktop:
 
 ```sh
 anotify-client        # with system tray icon

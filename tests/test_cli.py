@@ -132,3 +132,113 @@ class TestCmdSend:
         assert payload["agent"] == "claude-code"
         # summary derived as "script · dirname" when not given explicitly
         assert payload["summary"] == "bootstrap.R · project"
+
+
+class TestArgOrdering:
+    """Global --server/--token are accepted before *or* after the subcommand,
+    and the `test` subcommand doesn't crash on missing send-only fields.
+    """
+
+    def _run(self, argv):
+        import sys
+
+        from anotify import cli
+
+        captured = {}
+
+        def fake_send(args):
+            captured["server"] = args.server
+            captured["token"] = args.token
+
+        with patch.object(cli, "cmd_send", side_effect=fake_send), \
+             patch.object(sys, "argv", ["anotify", *argv]):
+            cli.main()
+        return captured
+
+    def test_flag_after_subcommand(self):
+        out = self._run(["send", "hi", "--server", "https://a.example"])
+        assert out["server"] == "https://a.example"
+
+    def test_flag_before_subcommand(self):
+        out = self._run(["--server", "https://b.example", "send", "hi"])
+        assert out["server"] == "https://b.example"
+
+    def test_flags_split_across_position(self):
+        out = self._run(["--token", "T", "send", "hi", "--server", "https://c.example"])
+        assert out["server"] == "https://c.example"
+        assert out["token"] == "T"
+
+    def test_test_subcommand_has_all_send_fields(self):
+        import sys
+
+        from anotify import cli
+
+        seen = {}
+
+        def fake_send(args):
+            # cmd_send reads all of these; none should be missing.
+            for f in ("message", "title", "priority", "source",
+                      "summary", "script", "cwd", "host", "agent",
+                      "server", "token", "verbose"):
+                seen[f] = getattr(args, f)
+
+        with patch.object(cli, "cmd_send", side_effect=fake_send), \
+             patch.object(sys, "argv", ["anotify", "test", "--server", "https://d.example"]):
+            cli.main()
+        assert seen["server"] == "https://d.example"
+        assert seen["message"]  # test fills a default message
+
+
+class TestApproveExitCodes:
+    """`anotify approve` maps the decision to a process exit code."""
+
+    def _run_approve(self, decision):
+        import sys
+
+        from anotify import cli
+
+        # Fake httpx: POST /api/notify ok; GET wait returns the decision.
+        class FakeResp:
+            def __init__(self, status, payload=None):
+                self.status_code = status
+                self._p = payload or {}
+
+            def json(self):
+                return self._p
+
+        class FakeClient:
+            def __init__(self, timeout):
+                pass
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def post(self, url, json, headers):
+                return FakeResp(200, {"ok": True})
+
+            def get(self, url, params, headers, timeout):
+                return FakeResp(200, {"choice": decision})
+
+        import httpx
+
+        argv = ["anotify", "approve", "Do it?", "--server", "https://r.example", "--timeout", "5"]
+        with patch.object(httpx, "Client", FakeClient), \
+             patch.object(sys, "argv", argv), \
+             patch("anotify.cli.get_token", return_value=""):
+            try:
+                cli.main()
+            except SystemExit as e:
+                return e.code
+        return None
+
+    def test_accept_exits_zero(self):
+        assert self._run_approve("once") == 0
+
+    def test_session_exits_zero(self):
+        assert self._run_approve("session") == 0
+
+    def test_deny_exits_one(self):
+        assert self._run_approve("deny") == 1

@@ -367,3 +367,40 @@ class TestServerHygiene:
         srv.check_rate_limit("5.6.7.8")
         assert "1.2.3.4" not in srv._rate_buckets           # swept away
         assert "5.6.7.8" in srv._rate_buckets               # active IP kept
+
+
+class TestReconnect:
+    """NotifyClient.reconnect() forces an immediate reconnect (used by the
+    settings window so server/token changes take effect now, not on next drop).
+    """
+
+    def _client(self):
+        from anotify.client import NotifyClient
+
+        return NotifyClient(server_url="wss://x/ws", token="")
+
+    def test_reconnect_before_run_is_noop(self):
+        # No loop/socket yet (run() not started) → must not raise.
+        c = self._client()
+        c.reconnect()  # should be a safe no-op
+
+    def test_reconnect_schedules_socket_close(self):
+        from unittest.mock import MagicMock
+
+        c = self._client()
+
+        async def _fake_close():
+            return None
+
+        # Stand in for a live loop + websocket.
+        loop = MagicMock()
+        ws = MagicMock()
+        ws.close = _fake_close
+        c._loop = loop
+        c._ws = ws
+        c.reconnect()
+        # It must hop onto the loop thread rather than touching the socket
+        # directly from the caller's thread.
+        assert loop.call_soon_threadsafe.called
+        # Backoff is reset so the fresh attempt happens promptly.
+        assert c._reconnect_delay == 1.0

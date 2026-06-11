@@ -7,6 +7,7 @@ with automatic reconnection and exponential backoff.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -37,8 +38,15 @@ class NotifyClient:
         self._running: bool = True
         self._connected: bool = False
         self._reconnect_delay: float = 1.0
+        # Set once run() starts; lets other threads (e.g. the settings window)
+        # poke the asyncio loop to force an immediate reconnect.
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._ws: Any | None = None
         self._on_status_change: Callable[[bool], None] | None = None
         self._on_notification: Callable[[dict[str, Any]], None] | None = None
+        # Optional override for the approve/deny prompt (e.g. a GUI). When None,
+        # the default interactive dialog in anotify.approval is used.
+        self._on_approval: Callable[[dict[str, Any]], None] | None = None
         # Dedup: ids of notifications already surfaced, as a bounded LRU set so
         # reconnect replays and accidental rebroadcasts don't double-popup.
         self._seen_ids: OrderedDict[str, None] = OrderedDict()
@@ -74,6 +82,17 @@ class NotifyClient:
         Runs synchronously in the WebSocket receive loop — keep it fast.
         """
         self._on_notification = callback
+
+    def on_approval(self, callback: Callable[[dict[str, Any]], None]) -> None:
+        """Register a handler for approval notifications.
+
+        Called (on a background thread) with the notification dict for any
+        notification whose ``kind`` is ``approval``. The handler is responsible
+        for asking the user and posting the decision (see
+        :func:`anotify.approval.respond`). If unset, a default interactive
+        dialog is used.
+        """
+        self._on_approval = callback
 
     # ── Quiet controls ──────────────────────────────────────────────────
 
@@ -127,8 +146,30 @@ class NotifyClient:
         """Signal the client to stop reconnecting."""
         self._running = False
 
+    def reconnect(self) -> None:
+        """Drop the current connection so the run loop reconnects at once.
+
+        Safe to call from any thread (e.g. the settings window after the
+        server/token changed). Closing the live socket makes ``run()`` fall
+        straight through to a fresh ``_connect_loop`` using the new
+        ``server_url``/``token`` instead of waiting for the next failure.
+        """
+        loop, ws = self._loop, self._ws
+        if loop is None or ws is None:
+            return
+        self._reconnect_delay = 1.0
+
+        def _close() -> None:
+            import asyncio as _asyncio
+            with contextlib.suppress(Exception):
+                _asyncio.ensure_future(ws.close())
+
+        with contextlib.suppress(RuntimeError):
+            loop.call_soon_threadsafe(_close)
+
     async def run(self) -> None:
         """Main loop — connect, receive, and auto-reconnect on failure."""
+        self._loop = asyncio.get_event_loop()
         while self._running:
             try:
                 await self._connect_loop()
@@ -168,18 +209,22 @@ class NotifyClient:
 
     async def _consume(self, ws: Any) -> None:
         """Mark connected and process the incoming message stream."""
+        self._ws = ws
         self._set_connected(True)
         self._reconnect_delay = 1.0
         logger.info("Connected to %s", self.server_url)
 
-        async for raw in ws:
-            if not self._running:
-                break
-            try:
-                data: dict[str, Any] = json.loads(raw)
-                self._handle_message(data)
-            except json.JSONDecodeError:
-                continue
+        try:
+            async for raw in ws:
+                if not self._running:
+                    break
+                try:
+                    data: dict[str, Any] = json.loads(raw)
+                    self._handle_message(data)
+                except json.JSONDecodeError:
+                    continue
+        finally:
+            self._ws = None
 
     def _set_connected(self, connected: bool) -> None:
         """Update connection state and notify callback."""
@@ -211,6 +256,24 @@ class NotifyClient:
             self._on_notification(data)
         if self._should_alert(data):
             self._dispatch_native(title, message, priority)
+            # Approvals need a decision — ask the user (off the event loop, the
+            # prompt blocks) and post the result back to the relay.
+            if data.get("kind") == "approval" and data.get("approval_id"):
+                self._dispatch_approval(data)
+
+    def _dispatch_approval(self, data: dict[str, Any]) -> None:
+        """Run the approve/deny prompt off the asyncio loop (it blocks)."""
+        handler = self._on_approval or self._default_approval
+        threading.Thread(target=handler, args=(data,), daemon=True).start()
+
+    @staticmethod
+    def _default_approval(data: dict[str, Any]) -> None:
+        """Default approval prompt — interactive dialog, posts the decision."""
+        try:
+            from .approval import prompt
+            prompt(data)
+        except Exception:  # noqa: BLE001
+            logger.exception("Approval prompt failed")
 
     def _handle_history(self, notifications: list[dict[str, Any]]) -> None:
         """Handle a history snapshot sent by the server on (re)connect.

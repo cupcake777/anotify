@@ -1,6 +1,6 @@
 {
   "productName": "anotify",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.anotify.desktop",
   "build": {
     "frontendDist": "../src",
@@ -13,8 +13,11 @@
       {
         "label": "main",
         "title": "anotify",
+        "url": "index.html",
         "width": 1040,
         "height": 720,
+        "minWidth": 720,
+        "minHeight": 520,
         "visible": true,
         "center": true,
         "resizable": true,
@@ -24,8 +27,8 @@
         "label": "toasts",
         "title": "anotify toasts",
         "url": "toast.html",
-        "width": 400,
-        "height": 660,
+        "width": 320,
+        "height": 420,
         "transparent": true,
         "decorations": false,
         "alwaysOnTop": true,

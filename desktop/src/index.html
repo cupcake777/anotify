@@ -1,142 +1,367 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>anotify</title>
-  <link rel="stylesheet" href="style.css" />
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>anotify</title>
+<style>
+:root{
+  --cream:#fffaf3; --cream-2:#fff4e5; --panel:#fffdfa;
+  --navy:#24446f; --navy-ink:#1a3251; --ink:#46566f; --muted:#8493a8;
+  --line:#d6deea; --line-strong:#c2cdde;
+  --k-complete:#48b079; --k-error:#ec6a6a; --k-approval:#eba33a; --k-message:#5aa6f0; --k-info:#93a6c2;
+  --ok:#48b079; --bad:#ec6a6a; --idle:#9ca3af;
+  --shadow:0 12px 28px -18px rgba(11,36,71,.45);
+  --shadow-press:1px 2px 0 rgba(11,36,71,.16);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:
+    radial-gradient(1100px 540px at 12% -8%, var(--cream-2) 0%, transparent 60%),
+    linear-gradient(180deg, var(--cream) 0%, #fef6ea 100%);
+  color:var(--navy-ink);
+  font-family:'Baloo 2',system-ui,-apple-system,'Segoe UI',sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.app{max-width:1040px;margin:0 auto;min-height:100%;padding:22px 26px 40px;display:flex;flex-direction:column;gap:20px}
+
+/* ── Header / status ── */
+.header{display:flex;align-items:center;gap:16px}
+.bird{width:62px;height:62px;flex:none;border-radius:18px;display:grid;place-items:center;
+  background:radial-gradient(circle at 50% 42%, #fff 0%, var(--cream-2) 78%, transparent 100%);
+  border:2.5px solid var(--line-strong);box-shadow:var(--shadow)}
+.bird img{width:48px;height:48px;image-rendering:auto;animation:bob 3.6s ease-in-out infinite}
+.bird.dnd img{animation:none;opacity:.7}
+.brand{display:flex;flex-direction:column;gap:2px;min-width:0}
+.brand h1{margin:0;font-size:30px;font-weight:800;letter-spacing:-.02em;line-height:1}
+.brand .tag{font-family:ui-monospace,'JetBrains Mono',monospace;font-size:11.5px;color:var(--muted);font-weight:600}
+.status{margin-left:auto;display:flex;align-items:center;gap:10px;flex:none}
+.dot{width:11px;height:11px;border-radius:50%;background:var(--idle);box-shadow:0 0 0 0 rgba(72,176,121,.5)}
+.dot.ok{background:var(--ok);animation:pulse 2.4s ease-in-out infinite}
+.dot.bad{background:var(--bad)}
+.status .label{font-weight:700;font-size:13.5px}
+.status .sub{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--muted)}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:6px;border-bottom:2px solid var(--line)}
+.tab{appearance:none;border:none;background:none;cursor:pointer;font-family:inherit;font-weight:700;font-size:14px;
+  color:var(--muted);padding:9px 14px;border-radius:10px 10px 0 0;position:relative;top:2px;border-bottom:2px solid transparent}
+.tab[aria-selected="true"]{color:var(--navy-ink);border-bottom-color:var(--navy)}
+.tab .count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:9px;
+  font-family:ui-monospace,monospace;font-size:10px;font-weight:700;color:#fff;background:var(--k-approval);vertical-align:1px}
+.tab .count[hidden]{display:none}
+
+main{flex:1}
+.view{display:none}.view.active{display:block}
+
+/* ── Inbox ── */
+.inbox{display:flex;flex-direction:column;gap:10px}
+.card{position:relative;background:var(--panel);border:2px solid var(--line);border-radius:14px;
+  padding:13px 15px 13px 18px;box-shadow:var(--shadow);overflow:hidden}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent,var(--k-info))}
+.card .row{display:flex;align-items:baseline;gap:10px}
+.card .title{font-weight:700;font-size:15px;color:var(--navy-ink);letter-spacing:-.01em}
+.card .time{margin-left:auto;font-family:ui-monospace,monospace;font-size:10.5px;color:var(--muted);flex:none}
+.card .msg{margin-top:3px;font-family:ui-monospace,monospace;font-size:12px;line-height:1.45;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.chip{font-family:ui-monospace,monospace;font-size:10px;font-weight:600;color:#43577a;background:color-mix(in srgb,var(--navy) 9%,#fff);
+  border:1.5px solid var(--line);border-radius:7px;padding:2px 7px}
+.chip.kind{color:#fff;background:var(--accent,var(--k-info));border-color:transparent}
+.actions{display:flex;gap:8px;margin-top:11px}
+.btn{appearance:none;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;border-radius:10px;padding:7px 14px;
+  border:2px solid var(--line-strong);background:#fff;color:var(--navy);box-shadow:var(--shadow-press);transition:transform .06s}
+.btn:active{transform:translateY(1px);box-shadow:none}
+.btn.accept{background:var(--k-complete);color:#fff;border-color:color-mix(in srgb,var(--k-complete) 70%,#000 12%)}
+.btn.deny{background:#fff;color:var(--k-error);border-color:color-mix(in srgb,var(--k-error) 55%,#fff)}
+.resolved{margin-top:10px;font-weight:700;font-size:13.5px}
+.empty{text-align:center;color:var(--muted);padding:54px 20px}
+.empty .big{font-size:15px;font-weight:700;color:var(--ink);margin-bottom:4px}
+.empty .small{font-family:ui-monospace,monospace;font-size:11.5px}
+.toolbar{display:flex;justify-content:flex-end;margin-bottom:4px}
+.linkbtn{appearance:none;border:none;background:none;cursor:pointer;font-family:ui-monospace,monospace;font-size:11.5px;
+  font-weight:600;color:var(--muted)}
+.linkbtn:hover{color:var(--navy)}
+
+/* ── Settings ── */
+.settings{max-width:560px}
+.field{margin-bottom:16px}
+.field label{display:block;font-weight:700;font-size:13px;margin-bottom:6px}
+.field .help{font-family:ui-monospace,monospace;font-size:10.5px;color:var(--muted);margin-top:5px}
+.field input[type=text],.field input[type=password]{width:100%;font-family:ui-monospace,monospace;font-size:13px;
+  padding:10px 12px;border:2px solid var(--line);border-radius:11px;background:#fff;color:var(--navy-ink)}
+.field input:focus{outline:none;border-color:var(--k-message)}
+.switch{display:flex;align-items:center;gap:10px;cursor:pointer;font-weight:700;font-size:13.5px}
+.switch input{appearance:none;width:42px;height:24px;border-radius:13px;background:var(--line-strong);position:relative;cursor:pointer;flex:none;transition:background .15s}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.25);transition:left .15s}
+.switch input:checked{background:var(--k-complete)}
+.switch input:checked::after{left:20px}
+.savebar{display:flex;gap:10px;align-items:center;margin-top:22px}
+.btn.primary{background:var(--navy);color:#fff;border-color:var(--navy-ink);padding:9px 20px}
+.saved{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--k-complete);font-weight:700;opacity:0;transition:opacity .2s}
+.saved.show{opacity:1}
+
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(72,176,121,.5)}50%{box-shadow:0 0 0 5px rgba(72,176,121,0)}}
+@media (prefers-reduced-motion:reduce){.bird img,.dot.ok{animation:none}}
+@media (max-width:680px){.app{padding:18px 16px 32px}.brand h1{font-size:25px}}
+</style>
 </head>
 <body>
-  <div class="app-shell">
-    <aside class="sidebar">
-      <div class="brand-card">
-        <img src="assets/01_default.png" alt="anotify bird" class="mascot" width="54" height="54" />
-        <div>
-          <h1>anotify</h1>
-          <p>desktop relay</p>
-        </div>
+<div class="app">
+  <header class="header">
+    <div class="bird" id="bird"><img id="birdImg" src="assets/brand/01_default.png" alt="anotify bird"/></div>
+    <div class="brand">
+      <h1>anotify</h1>
+      <span class="tag">tiny messages · big heart</span>
+    </div>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <div>
+        <div class="label" id="statusLabel">Connecting…</div>
+        <div class="sub" id="statusSub">—</div>
       </div>
-      <nav class="nav-list" aria-label="Dashboard sections">
-        <button class="nav-item active" data-view="overview">Overview</button>
-        <button class="nav-item" data-view="inbox">Inbox <span id="nav-inbox-count">0</span></button>
-        <button class="nav-item" data-view="settings">Settings</button>
-      </nav>
-      <div class="sidebar-foot">
-        <span class="mini-label">status</span>
-        <div class="mini-status"><span id="status-dot" class="dot connecting"></span><span id="ws-status">Connecting</span></div>
-      </div>
-    </aside>
+    </div>
+  </header>
 
-    <main class="workspace">
-      <section class="topbar">
-        <div>
-          <p class="eyebrow">Control panel</p>
-          <h2 id="view-title">Overview</h2>
-        </div>
-        <div class="top-actions">
-          <button class="btn ghost" id="dnd-btn" data-on="false">DND off</button>
-          <button class="btn" id="verify-btn">Verify connection</button>
-        </div>
-      </section>
-
-      <section class="view active" id="view-overview">
-        <div class="hero-grid">
-          <article class="card status-card">
-            <div class="card-head"><span>Connection</span><strong id="connection-state">Connecting</strong></div>
-            <div class="metric-row">
-              <div><b id="metric-inbox">0</b><span>Inbox</span></div>
-              <div><b id="metric-pending">0</b><span>Needs action</span></div>
-              <div><b id="metric-live">0</b><span>On screen</span></div>
-            </div>
-            <div class="config-strip">
-              <span id="server-summary">Server not configured</span>
-              <span id="token-summary">Token not configured</span>
-            </div>
-          </article>
-
-          <article class="card sample-card">
-            <div class="card-head"><span>Notification sample</span><button class="link-btn" data-sample="message">Show sample</button></div>
-            <div class="sample-note">通知样式作为辅助样例，不占用控制台主体空间。</div>
-            <div class="sample-row">
-              <button class="pill" data-sample="approval">Approval</button>
-              <button class="pill" data-sample="complete">Complete</button>
-              <button class="pill" data-sample="error">Error</button>
-            </div>
-          </article>
-        </div>
-
-        <div class="content-grid">
-          <article class="card">
-            <div class="card-head"><span>Recent notifications</span><button class="link-btn" data-view-jump="inbox">Open inbox</button></div>
-            <div class="compact-list" id="recent-list"><p class="empty">No notifications yet.</p></div>
-          </article>
-
-          <article class="card">
-            <div class="card-head"><span>Quick controls</span></div>
-            <div class="control-list">
-              <button class="control-row" id="clear-btn"><span>Clear local inbox</span><small>Remove dashboard history and visible toasts</small></button>
-              <button class="control-row" id="settings-shortcut"><span>Edit connection</span><small>Server URL and token replacement</small></button>
-            </div>
-          </article>
-        </div>
-      </section>
-
-      <section class="view" id="view-inbox">
-        <article class="card full-card">
-          <div class="card-head inbox-head">
-            <span>Inbox</span>
-            <input id="search" class="search" placeholder="Search title / message / source" />
-          </div>
-          <div class="chips" id="chips"></div>
-          <div class="modal-list" id="notifications"><p class="empty">No notifications yet.</p></div>
-          <div class="list-foot"><span id="inbox-count">0 items</span></div>
-        </article>
-      </section>
-
-      <section class="view" id="view-settings">
-        <form id="settings-form" class="settings-layout">
-          <article class="card full-card">
-            <div class="card-head"><span>Connection</span><strong id="privacy-state">Private by default</strong></div>
-            <p class="privacy-note">已保存的 server 和 token 不会回填到界面。需要更换时才输入新值。</p>
-            <label>Server URL</label>
-            <input type="text" id="cfg-server" placeholder="Leave empty to keep existing server" autocomplete="off" />
-            <label>New token</label>
-            <input type="password" id="cfg-token" placeholder="Leave empty to keep existing token" autocomplete="new-password" />
-            <div class="token-meter" id="config-current">Current config: not configured</div>
-          </article>
-
-          <article class="card full-card">
-            <div class="card-head"><span>Toast behavior</span></div>
-            <div class="set-row"><span>Position</span><div class="seg" id="set-pos">
-              <button type="button" data-v="br" data-on="true">Bottom right</button>
-              <button type="button" data-v="bl">Bottom left</button>
-              <button type="button" data-v="tr">Top right</button>
-              <button type="button" data-v="tl">Top left</button>
-            </div></div>
-            <div class="set-row"><span>Max visible</span><div class="seg" id="set-max">
-              <button type="button" data-v="3">3</button>
-              <button type="button" data-v="4" data-on="true">4</button>
-              <button type="button" data-v="6">6</button>
-            </div></div>
-            <div class="set-row"><span>Theme</span><div class="seg" id="set-theme">
-              <button type="button" data-v="cream" data-on="true">Cream</button>
-              <button type="button" data-v="retro">Retro</button>
-              <button type="button" data-v="dark">Dark</button>
-            </div></div>
-            <div class="set-row"><span>Do not disturb</span><button type="button" class="switch" id="set-dnd" data-on="false" aria-label="Toggle DND"></button></div>
-          </article>
-
-          <div class="settings-actions">
-            <button type="submit" class="btn primary" id="save-btn">Save settings</button>
-            <button type="button" class="btn" id="settings-verify-btn">Verify connection</button>
-          </div>
-        </form>
-      </section>
-    </main>
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-view="inbox">
+      Inbox<span class="count" id="approvalCount" hidden>0</span>
+    </button>
+    <button class="tab" role="tab" aria-selected="false" data-view="settings">Settings</button>
   </div>
 
-  <main id="stack" aria-live="polite"></main>
-  <footer>anotify v0.1.0</footer>
-  <script src="app.js"></script>
+  <main>
+    <section class="view active" id="view-inbox">
+      <div class="toolbar"><button class="linkbtn" id="clearBtn">Clear all</button></div>
+      <div class="inbox" id="inbox"></div>
+      <div class="empty" id="inboxEmpty">
+        <div class="big">No notifications yet</div>
+        <div class="small">Send one: <code>anotify send "hello"</code></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-settings">
+      <div class="settings">
+        <div class="field">
+          <label for="server">Server</label>
+          <input type="text" id="server" placeholder="https://your-server.example" autocomplete="off"/>
+          <div class="help">Where your relay lives. Saved to ~/.anotify.json — shared with the CLI.</div>
+        </div>
+        <div class="field">
+          <label for="token">Token</label>
+          <input type="password" id="token" placeholder="leave blank to keep current" autocomplete="off"/>
+          <div class="help">Used as a Bearer credential. Leave blank to keep the existing one.</div>
+        </div>
+        <div class="field">
+          <label class="switch"><input type="checkbox" id="dnd"/> Do Not Disturb</label>
+          <div class="help">Silences toasts and sound. Critical alerts can still break through.</div>
+        </div>
+        <div class="field">
+          <label class="switch"><input type="checkbox" id="autostart"/> Start on login</label>
+          <div class="help">Launch anotify automatically when you sign in.</div>
+        </div>
+        <div class="savebar">
+          <button class="btn primary" id="saveBtn">Save changes</button>
+          <button class="btn" id="testBtn">Send test</button>
+          <span class="saved" id="savedMsg">Saved</span>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script>
+/* ===== anotify dashboard ===== */
+const TAURI = window.__TAURI__ || null;
+const invoke = TAURI?.core?.invoke?.bind(TAURI.core) || null;
+const listen = TAURI?.event?.listen?.bind(TAURI.event) || null;
+
+const ACCENT = {complete:"var(--k-complete)",error:"var(--k-error)",approval:"var(--k-approval)",message:"var(--k-message)",info:"var(--k-info)"};
+const BIRD = {default:"assets/brand/01_default.png",message:"assets/brand/02_new_message.png",
+  approval:"assets/brand/03_approval_required.png",complete:"assets/brand/04_task_complete.png",error:"assets/brand/06_error.png"};
+
+const RULES=[[["error","fail","failed","crash","exception","traceback"],"error"],
+  [["approval","approve","permission","confirm","authorize","review"],"approval"],
+  [["complete","completed","done","success","succeeded","finished","passed"],"complete"],
+  [["message","msg","reply","new "],"message"]];
+function classify(t="",m="",s="",p="medium"){const x=(s+" "+t+" "+m).toLowerCase();
+  for(const [kw,k] of RULES){if(kw.some(w=>x.includes(w)))return k;} return p==="critical"?"error":"info";}
+
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hhmm=ts=>{const d=new Date(ts?ts*1000:Date.now());return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+const bn=p=>(p||"").replace(/\/+$/,'').split('/').pop();
+
+const inbox=document.getElementById('inbox');
+const inboxEmpty=document.getElementById('inboxEmpty');
+const approvalCount=document.getElementById('approvalCount');
+let items=[];                    // {data, kind, resolved}
+let dndState=false;
+
+function kindOf(n){return n.kind||classify(n.title,n.message,n.source,n.priority);}
+function oneLiner(n){return n.summary||(n.script?`${n.script} · ${bn(n.cwd)}`:(n.message||""));}
+
+function render(){
+  const pending = items.filter(it=>it.kind==="approval" && !it.resolved).length;
+  approvalCount.textContent=pending; approvalCount.hidden = pending===0;
+  inboxEmpty.style.display = items.length? "none":"block";
+  inbox.innerHTML="";
+  // newest first
+  for(const it of [...items].reverse()){
+    inbox.appendChild(card(it));
+  }
+  updateBird();
+}
+
+function card(it){
+  const n=it.data, kind=it.kind;
+  const el=document.createElement('div');
+  el.className='card';
+  el.style.setProperty('--accent',ACCENT[kind]||ACCENT.info);
+  const chips=[];
+  chips.push(`<span class="chip kind">${esc(kind)}</span>`);
+  if(n.source&&n.source!=="unknown")chips.push(`<span class="chip">${esc(n.source)}</span>`);
+  if(n.agent)chips.push(`<span class="chip">${esc(n.agent)}</span>`);
+  if(n.priority&&n.priority!=="medium")chips.push(`<span class="chip">${esc(n.priority)}</span>`);
+
+  let actions="";
+  if(kind==="approval" && !it.resolved){
+    actions=`<div class="actions">
+      <button class="btn accept" data-act="once">Approve</button>
+      <button class="btn deny" data-act="deny">Deny</button></div>`;
+  }else if(it.resolved){
+    const ok=it.resolved!=="deny";
+    actions=`<div class="resolved" style="color:${ok?'var(--k-complete)':'var(--k-error)'}">${ok?'✔':'✕'} ${esc(label(it.resolved))}</div>`;
+  }
+
+  el.innerHTML=`
+    <div class="row">
+      <span class="title">${esc(n.title||'Agent notification')}</span>
+      <span class="time">${hhmm(n.timestamp)}</span>
+    </div>
+    ${oneLiner(n)?`<div class="msg">${esc(oneLiner(n))}</div>`:""}
+    <div class="chips">${chips.join("")}</div>
+    ${actions}`;
+
+  el.querySelectorAll('.btn[data-act]').forEach(b=>{
+    b.addEventListener('click',()=>decide(it,b.dataset.act,el));
+  });
+  return el;
+}
+function label(c){return c==="deny"?"Denied":c==="always"?"Always allowed":c==="session"?"Allowed this session":"Approved";}
+
+async function decide(it,choice,el){
+  el.querySelectorAll('.btn').forEach(b=>b.disabled=true);
+  const n=it.data;
+  if(invoke && n.approval_id){
+    try{
+      await invoke('respond_approval',{approvalId:n.approval_id,choice,callbackUrl:n.callback_url||null});
+    }catch(e){
+      const a=el.querySelector('.actions');
+      if(a)a.outerHTML=`<div class="resolved" style="color:var(--k-error)">⚠ ${esc(String(e))}</div>`;
+      return;
+    }
+  }
+  it.resolved=choice;
+  render();
+}
+
+function updateBird(){
+  const img=document.getElementById('birdImg');
+  const bird=document.getElementById('bird');
+  bird.classList.toggle('dnd',dndState);
+  // reflect the most recent unresolved/important item
+  const latest=[...items].reverse().find(it=>!(it.kind==="approval"&&it.resolved));
+  const k=latest?latest.kind:"default";
+  img.src=BIRD[k]||BIRD.default;
+}
+
+function addNotification(n){
+  const it={data:n,kind:kindOf(n),resolved:n._resolved||null};
+  items.push(it);
+  if(items.length>200)items.shift();
+  render();
+}
+
+/* ── connection status ── */
+function setStatus(connected){
+  const dot=document.getElementById('dot');
+  const label=document.getElementById('statusLabel');
+  const sub=document.getElementById('statusSub');
+  dot.className='dot '+(dndState?'':connected?'ok':'bad');
+  if(dndState){label.textContent='Do Not Disturb';}
+  else{label.textContent=connected?'Connected':'Disconnected';}
+  sub.textContent=(window.__server||'—');
+}
+
+/* ── tabs ── */
+document.querySelectorAll('.tab').forEach(t=>{
+  t.addEventListener('click',()=>{
+    document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected','false'));
+    t.setAttribute('aria-selected','true');
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    document.getElementById('view-'+t.dataset.view).classList.add('active');
+  });
+});
+
+document.getElementById('clearBtn').addEventListener('click',async()=>{
+  items=[]; render();
+  if(invoke){try{await invoke('clear_notifications');}catch(e){}}
+});
+
+/* ── settings ── */
+const $server=document.getElementById('server'),$token=document.getElementById('token'),
+  $dnd=document.getElementById('dnd'),$autostart=document.getElementById('autostart');
+
+async function loadSettings(){
+  if(!invoke){return;}
+  try{
+    const c=await invoke('get_config');
+    $server.value=c.server||"";
+    $token.placeholder=c.token==="__SET__"?"•••••• (saved — blank keeps it)":"leave blank to keep current";
+    $dnd.checked=!!c.dnd; $autostart.checked=!!c.autostart;
+    dndState=!!c.dnd; window.__server=c.server||"—";
+  }catch(e){}
+}
+$dnd.addEventListener('change',()=>{dndState=$dnd.checked;updateBird();setStatus(lastConnected);});
+
+document.getElementById('saveBtn').addEventListener('click',async()=>{
+  const update={server:$server.value.trim(),autostart:$autostart.checked,dnd:$dnd.checked};
+  if($token.value)update.token=$token.value;     // blank keeps the saved one
+  if(invoke){try{
+    const c=await invoke('update_config',{update});
+    window.__server=c.server||"—"; dndState=!!c.dnd; $token.value="";
+    $token.placeholder=c.token==="__SET__"?"•••••• (saved — blank keeps it)":"leave blank to keep current";
+  }catch(e){alert("Couldn't save: "+e);return;}}
+  const m=document.getElementById('savedMsg');m.classList.add('show');setTimeout(()=>m.classList.remove('show'),1600);
+  setStatus(lastConnected);
+});
+
+document.getElementById('testBtn').addEventListener('click',()=>{
+  // Local preview of a toast-style notification in the inbox.
+  addNotification({title:"anotify test",message:"This is what a notification looks like.",
+    source:"anotify",priority:"medium",timestamp:Date.now()/1000,kind:"message"});
+  document.querySelector('.tab[data-view="inbox"]').click();
+});
+
+/* ── boot ── */
+let lastConnected=false;
+async function boot(){
+  await loadSettings();
+  setStatus(false);
+  if(invoke){
+    try{(await invoke('get_notifications')||[]).forEach(addNotification);}catch(e){}
+  }
+  if(listen){
+    listen('notification',ev=>{try{addNotification(ev.payload||{});}catch(e){}});
+    listen('history',ev=>{try{
+      const arr=ev.payload?.notifications||[]; items=[]; arr.forEach(addNotification);
+    }catch(e){}});
+    listen('connection',ev=>{lastConnected=!!ev.payload?.connected;setStatus(lastConnected);});
+  }
+  render();
+}
+boot();
+</script>
 </body>
 </html>

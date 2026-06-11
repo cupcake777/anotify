@@ -47,6 +47,13 @@ class TestLoadConfig:
         tmp_config.write_text("{bad json")
         assert load_config() == {}
 
+    @pytest.mark.parametrize("body", ["[]", '"a string"', "42", "true", "null"])
+    def test_non_object_json_returns_empty(self, tmp_config, body):
+        # A config file whose top-level value isn't an object used to crash
+        # every load_config().get(...) caller with AttributeError. Guard it.
+        tmp_config.write_text(body)
+        assert load_config() == {}
+
 
 class TestSaveConfig:
     def test_creates_file(self, tmp_path):

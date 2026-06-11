@@ -164,37 +164,48 @@ class AnotifyMacApp(rumps.App):
         self.icon = self._silence_icon if on else self._default_icon
 
     def _test_notify(self, _: Any) -> None:
-        """Send a test notification (local popup + round-trip through the relay)."""
-        send_notification("🧪 anotify Test", "Notification is working on macOS! 🐦", "medium")
-        # Round-trip via the *configured* server, reusing the CLI's HTTP path.
-        # Uses httpx (already a dependency) so the token is never exposed on
-        # the process argv the way a `curl ... -H "Authorization: ..."` would be.
+        """Send a test notification.
+
+        Prefers a real end-to-end round-trip through the configured relay (the
+        most useful test — it exercises auth + WebSocket delivery and the popup
+        arrives via the normal path). Only if no server/token is configured, or
+        the round-trip fails, do we fall back to a direct local popup — so a
+        working setup shows the toast *once*, not twice.
+        """
         try:
             import httpx
 
             from .cli import _http_url
             from .config import ensure_ws_url, get_server
 
+            token = get_token()
             base = _http_url(ensure_ws_url(get_server())).rstrip("/")
             if base.endswith("/ws"):
                 base = base[:-3]
-            headers = {}
-            token = get_token()
-            if token:
-                headers["Authorization"] = f"Bearer {token}"
+            # No usable relay target → just show a local popup.
+            if not base or "your-server.example" in base:
+                raise RuntimeError("no relay configured")
+
+            # Uses httpx (already a dependency) so the token is never exposed on
+            # the process argv the way `curl ... -H "Authorization: ..."` would.
+            headers = {"Authorization": f"Bearer {token}"} if token else {}
             with httpx.Client(timeout=6) as http:
-                http.post(
+                resp = http.post(
                     f"{base}/api/notify",
                     json={
-                        "title": "🐦 anotify Remote Test",
-                        "message": "From your Mac menu bar app!",
+                        "title": "🐦 anotify Test",
+                        "message": "Round-trip from your Mac menu bar app!",
                         "priority": "medium",
                         "source": "anotify-mac",
                     },
                     headers=headers,
                 )
+            resp.raise_for_status()
+            return  # popup will arrive over the WebSocket — don't double-fire
         except Exception:
-            pass
+            send_notification(
+                "🧪 anotify Test", "Local notification is working on macOS! 🐦", "medium"
+            )
 
     def _edit_settings(self, _: Any) -> None:
         """Open the config file in the default text editor."""

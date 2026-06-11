@@ -24,9 +24,14 @@ def load_config() -> dict[str, Any]:
     """
     if CONFIG_PATH.exists():
         try:
-            return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
+            data = json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            pass
+            return {}
+        # A config file containing a non-object (``[]``, ``"x"``, ``42``) would
+        # otherwise crash every ``load_config().get(...)`` caller. Treat it as
+        # absent rather than letting the AttributeError propagate.
+        if isinstance(data, dict):
+            return data
     return {}
 
 

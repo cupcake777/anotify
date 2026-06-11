@@ -6,12 +6,12 @@ Requires the ``gui`` extra (``pip install anotify[gui]``): ``pystray`` and
 
 from __future__ import annotations
 
+import os
 import platform
 import subprocess
 import sys
-import tkinter as tk
+import threading
 from pathlib import Path
-from tkinter import messagebox, ttk
 from typing import TYPE_CHECKING, Any
 
 from .config import ensure_ws_url, load_config, save_config
@@ -32,21 +32,41 @@ def create_tray_icon(client: NotifyClient) -> Any:
     except ImportError:
         return None
 
-    def make_icon(color: str = "#22c55e") -> Any:
+    _assets = Path(__file__).parent / "assets"
+    # Load the mascot once; status is shown as a small corner dot composited
+    # over it, so the tray matches the macOS menu-bar bird instead of a bare
+    # colored circle. Falls back to a drawn circle if the asset is missing.
+    try:
+        _bird = Image.open(_assets / "08_tray.png").convert("RGBA")
+    except Exception:
+        _bird = None
+
+    def _status_color() -> str:
+        if client.dnd:
+            return "#9ca3af"        # muted gray
+        if client.connected:
+            return "#22c55e"        # green
+        return "#ef4444"            # red
+
+    def make_icon(color: str | None = None) -> Any:
+        color = color or _status_color()
+        if _bird is not None:
+            base = _bird.copy()
+            w, h = base.size
+            draw = ImageDraw.Draw(base)
+            # status dot, bottom-right, with a thin contrasting ring
+            r = max(5, w // 6)
+            x1, y1 = w - r - 2, h - r - 2
+            draw.ellipse([x1 - 1, y1 - 1, w - 1, h - 1], fill="#ffffff")
+            draw.ellipse([x1, y1, w - 2, h - 2], fill=color)
+            return base
+        # Fallback: plain colored disc
         img = Image.new("RGBA", (64, 64), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(img)
-        draw.ellipse([8, 8, 56, 56], fill=color)
+        ImageDraw.Draw(img).ellipse([8, 8, 56, 56], fill=color)
         return img
 
     def update_icon() -> None:
-        # muted gray while DND, else green/red by connection state
-        if client.dnd:
-            color = "#9ca3af"
-        elif client.connected:
-            color = "#22c55e"
-        else:
-            color = "#ef4444"
-        icon.icon = make_icon(color)
+        icon.icon = make_icon()
         state = "DND" if client.dnd else ("connected" if client.connected else "disconnected")
         icon.title = f"anotify — {state}"
 
@@ -68,89 +88,182 @@ def create_tray_icon(client: NotifyClient) -> Any:
 
     icon = pystray.Icon(
         "anotify",
-        icon=make_icon(),
+        icon=make_icon("#9ca3af"),
         title="anotify — connecting...",
         menu=pystray.Menu(
             pystray.MenuItem(
                 "Do Not Disturb", on_dnd, checked=lambda item: client.dnd
             ),
-            pystray.MenuItem("Settings", on_settings),
+            pystray.MenuItem("Settings", on_settings, default=True),
             pystray.MenuItem("Quit", on_quit),
         ),
     )
     return icon
 
 
+_settings_lock = threading.Lock()
+_settings_open = False
+
+
 def open_settings_window(client: NotifyClient | None = None) -> None:
-    """Open a tkinter window for editing anotify settings."""
-    win = tk.Tk()
-    win.title("anotify Settings")
-    win.geometry("420x320")
-    win.resizable(False, False)
+    """Open the settings window, on its own UI thread.
 
-    cfg: dict[str, Any] = load_config()
+    The tray icon's menu callbacks run on the tray's event-loop thread; calling
+    ``Tk().mainloop()`` there would block the tray (its status dot could no
+    longer update) and hard-crash on macOS, where Cocoa UI must stay on its own
+    thread. So we spin the whole window up on a dedicated thread and keep a
+    single-instance guard so repeated clicks don't stack windows/roots.
+    """
+    global _settings_open
+    with _settings_lock:
+        if _settings_open:
+            return
+        _settings_open = True
 
-    # Style
-    style = ttk.Style()
-    style.configure("TLabel", padding=4)
-    style.configure("TEntry", padding=4)
+    threading.Thread(
+        target=_run_settings_window, args=(client,), daemon=True,
+    ).start()
 
-    frame = ttk.Frame(win, padding=16)
-    frame.pack(fill="both", expand=True)
 
-    # Server
-    ttk.Label(frame, text="Server URL:").grid(row=0, column=0, sticky="w")
-    server_var = tk.StringVar(value=cfg.get("server", ""))
-    ttk.Entry(frame, textvariable=server_var, width=40).grid(row=0, column=1, sticky="ew")
+def _run_settings_window(client: NotifyClient | None) -> None:
+    """Build and run the tkinter settings window (own thread, own root)."""
+    global _settings_open
+    try:
+        try:
+            import tkinter as tk
+            from tkinter import messagebox, ttk
+        except Exception:
+            # No Tk on this Python build (common on minimal/Homebrew installs).
+            # Fall back to opening the JSON config in the default editor so the
+            # user can still change settings, and don't crash the tray.
+            _open_config_in_editor()
+            return
 
-    # Token
-    ttk.Label(frame, text="Token:").grid(row=1, column=0, sticky="w")
-    token_var = tk.StringVar(value=cfg.get("token", ""))
-    ttk.Entry(frame, textvariable=token_var, width=40, show="*").grid(row=1, column=1, sticky="ew")
+        win = tk.Tk()
+        win.title("anotify Settings")
+        win.geometry("440x340")
+        win.resizable(False, False)
 
-    # Auto-start
-    autostart_var = tk.BooleanVar(value=cfg.get("autostart", False))
-    ttk.Checkbutton(frame, text="Start on login", variable=autostart_var).grid(
-        row=2, column=0, columnspan=2, sticky="w", pady=(8, 0)
-    )
+        cfg: dict[str, Any] = load_config()
 
-    # Status
-    status_text = "Connected" if (client and client.connected) else "Disconnected"
-    status_label = ttk.Label(
-        frame,
-        text=f"Status: {status_text}",
-        foreground="green" if (client and client.connected) else "red",
-    )
-    status_label.grid(row=3, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        style = ttk.Style()
+        style.configure("TLabel", padding=4)
+        style.configure("TEntry", padding=4)
 
-    # Buttons
-    btn_frame = ttk.Frame(frame)
-    btn_frame.grid(row=4, column=0, columnspan=2, pady=(16, 0), sticky="ew")
+        frame = ttk.Frame(win, padding=16)
+        frame.pack(fill="both", expand=True)
 
-    def on_save() -> None:
-        new_cfg: dict[str, Any] = {
-            "server": server_var.get().strip(),
-            "token": token_var.get().strip(),
-            "autostart": autostart_var.get(),
-        }
-        save_config(new_cfg)
-        _set_autostart(bool(new_cfg["autostart"]))
-        if client:
-            if new_cfg["server"]:
-                client.server_url = ensure_ws_url(new_cfg["server"])
-            client.token = new_cfg["token"] or client.token
-        messagebox.showinfo("anotify", "Settings saved!")
+        # Server
+        ttk.Label(frame, text="Server URL:").grid(row=0, column=0, sticky="w")
+        server_var = tk.StringVar(value=cfg.get("server", ""))
+        ttk.Entry(frame, textvariable=server_var, width=40).grid(row=0, column=1, sticky="ew")
 
-    def on_test() -> None:
-        from .notify_backend import notify
-        notify("anotify Test", "Notification is working!", "medium")
+        # Token
+        ttk.Label(frame, text="Token:").grid(row=1, column=0, sticky="w")
+        token_var = tk.StringVar(value=cfg.get("token", ""))
+        ttk.Entry(frame, textvariable=token_var, width=40, show="*").grid(
+            row=1, column=1, sticky="ew"
+        )
 
-    ttk.Button(btn_frame, text="Save", command=on_save).pack(side="left", padx=(0, 8))
-    ttk.Button(btn_frame, text="Test Notification", command=on_test).pack(side="left")
-    ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side="right")
+        # Auto-start
+        autostart_var = tk.BooleanVar(value=cfg.get("autostart", False))
+        ttk.Checkbutton(frame, text="Start on login", variable=autostart_var).grid(
+            row=2, column=0, columnspan=2, sticky="w", pady=(8, 0)
+        )
 
-    frame.columnconfigure(1, weight=1)
-    win.mainloop()
+        # Do Not Disturb (live — reflects/controls the running client)
+        dnd_var = tk.BooleanVar(value=bool(client and client.dnd))
+
+        def on_dnd_toggle() -> None:
+            if client:
+                client.set_dnd(dnd_var.get())
+
+        dnd_cb = ttk.Checkbutton(
+            frame, text="Do Not Disturb", variable=dnd_var, command=on_dnd_toggle
+        )
+        dnd_cb.grid(row=3, column=0, columnspan=2, sticky="w")
+        if client is None:
+            dnd_cb.state(["disabled"])
+
+        # Status
+        connected = bool(client and client.connected)
+        status_label = ttk.Label(
+            frame,
+            text=f"Status: {'Connected' if connected else 'Disconnected'}",
+            foreground="green" if connected else "red",
+        )
+        status_label.grid(row=4, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
+        # Buttons
+        btn_frame = ttk.Frame(frame)
+        btn_frame.grid(row=5, column=0, columnspan=2, pady=(16, 0), sticky="ew")
+
+        def on_save() -> None:
+            existing = load_config()  # preserve keys we don't manage (muted_sources)
+            existing.update({
+                "server": server_var.get().strip(),
+                "token": token_var.get().strip(),
+                "autostart": autostart_var.get(),
+            })
+            save_config(existing)
+            _set_autostart(bool(existing["autostart"]))
+            if client:
+                # Apply immediately and force a reconnect so the new server/
+                # token take effect now instead of at the next dropout. Token
+                # is set verbatim (clearing it is allowed).
+                if existing["server"]:
+                    client.server_url = ensure_ws_url(existing["server"])
+                client.token = existing["token"]
+                client.reconnect()
+            messagebox.showinfo("anotify", "Settings saved.", parent=win)
+
+        def on_test() -> None:
+            # Shells out to the OS notifier (multi-second timeout) — run off the
+            # UI thread so the window doesn't freeze.
+            def _fire() -> None:
+                from .notify_backend import notify
+                notify("anotify Test", "Notification is working!", "medium")
+            threading.Thread(target=_fire, daemon=True).start()
+
+        ttk.Button(btn_frame, text="Save", command=on_save).pack(side="left", padx=(0, 8))
+        ttk.Button(btn_frame, text="Test Notification", command=on_test).pack(side="left")
+        ttk.Button(btn_frame, text="Close", command=win.destroy).pack(side="right")
+
+        frame.columnconfigure(1, weight=1)
+
+        # Keep the live Status label fresh while the window is open.
+        def _tick() -> None:
+            if client:
+                up = client.connected
+                status_label.config(
+                    text=f"Status: {'Connected' if up else 'Disconnected'}",
+                    foreground="green" if up else "red",
+                )
+                dnd_var.set(client.dnd)
+            win.after(1000, _tick)
+
+        win.after(1000, _tick)
+        win.mainloop()
+    finally:
+        with _settings_lock:
+            _settings_open = False
+
+
+def _open_config_in_editor() -> None:
+    """Open ``~/.anotify.json`` in the OS default editor (Tk-less fallback)."""
+    from .config import CONFIG_PATH
+    if not CONFIG_PATH.exists():
+        save_config(load_config())
+    path = str(CONFIG_PATH)
+    try:
+        if platform.system() == "Windows":
+            os.startfile(path)  # type: ignore[attr-defined]
+        elif platform.system() == "Darwin":
+            subprocess.Popen(["open", "-t", path])
+        else:
+            subprocess.Popen(["xdg-open", path])
+    except Exception:
+        pass
 
 
 def _set_autostart(enabled: bool) -> None:
@@ -218,4 +331,9 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="anotify settings GUI")
     parser.parse_args()
-    open_settings_window()
+    # Standalone: there's no tray to block, and tkinter wants the main thread,
+    # so build the window here directly (open_settings_window spawns a thread,
+    # which is only right when called from the tray's own event loop).
+    global _settings_open
+    _settings_open = True
+    _run_settings_window(None)

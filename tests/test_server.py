@@ -25,6 +25,8 @@ def _reset_state():
     srv.connected_clients.clear()
     srv.history.clear()
     srv._rate_buckets.clear()
+    srv.approval_decisions.clear()
+    srv.approval_waiters.clear()
     yield
 
 
@@ -211,3 +213,47 @@ class TestNotificationModel:
         n = srv.Notification(message="m", title="t", priority="high", source="hpc")
         assert n.priority == "high"
         assert n.source == "hpc"
+
+
+# ── Approval long-poll (outbound-only model) ──
+class TestApprovalLongPoll:
+    def test_respond_records_decision_without_callback(self, client, auth_headers):
+        # No callback_url → decision is recorded for a waiter, not an error.
+        resp = client.post(
+            "/api/approval/respond",
+            json={"approval_id": "p1", "choice": "deny"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.json()["choice"] == "deny"
+        assert resp.json()["delivery"] == "poll"
+        assert srv.approval_decisions["p1"]["choice"] == "deny"
+
+    def test_wait_returns_already_decided_immediately(self, client, auth_headers):
+        client.post(
+            "/api/approval/respond",
+            json={"approval_id": "p2", "choice": "accepted"},
+            headers=auth_headers,
+        )
+        resp = client.get("/api/approval/wait/p2?timeout=1", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.json()["choice"] == "once"  # normalized
+
+    def test_wait_times_out_when_pending(self, client, auth_headers):
+        resp = client.get("/api/approval/wait/never?timeout=0", headers=auth_headers)
+        assert resp.status_code == 408
+
+    def test_wait_requires_auth(self, client):
+        assert client.get("/api/approval/wait/x?timeout=0").status_code == 401
+
+    def test_kind_propagates_through_notify(self, client, auth_headers):
+        # The model now carries kind/action/target end to end.
+        client.post(
+            "/api/notify",
+            json={"message": "ok?", "kind": "approval", "action": "rm -rf", "target": "/tmp/x"},
+            headers=auth_headers,
+        )
+        hist = client.get("/api/history", headers=auth_headers).json()["notifications"]
+        assert hist[-1]["kind"] == "approval"
+        assert hist[-1]["action"] == "rm -rf"
+        assert hist[-1]["target"] == "/tmp/x"

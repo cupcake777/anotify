@@ -1,1 +1,0 @@
-{"default":{"identifier":"default","description":"Default capabilities","local":true,"windows":["main"],"permissions":["core:default","core:event:allow-listen","shell:allow-open","notification:default","autostart:default","allow-get-notifications","allow-update-config","allow-get-config","allow-clear-notifications","allow-verify-connection","allow-reconnect"]}}
