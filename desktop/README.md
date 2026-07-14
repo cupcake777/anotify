@@ -3,11 +3,12 @@
 The primary anotify desktop experience is a Tauri 2 app with a live inbox,
 custom penguin toasts, connection state, silence mode, and approval actions.
 
-## Source-preview status
+## Public beta
 
-Public installers have not been released yet. Build the app from source using
-the steps below. When a release is published, installers will appear on the
-[Releases](https://github.com/cupcake777/anotify/releases) page.
+Unsigned installers are available on the
+[Releases](https://github.com/cupcake777/anotify/releases/latest) page. Verify a
+download against `SHA256SUMS.txt`, or build the app from source using the steps
+below.
 
 ## Build from source
 

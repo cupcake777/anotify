@@ -1,9 +1,10 @@
 # anotify client installation
 
 > [!NOTE]
-> Public installers and a public Python package have not been released yet. The
-> project named `anotify` on PyPI is unrelated. Install this repository from
-> source during the source-preview phase.
+> Unsigned desktop installers are available from the public
+> [GitHub Release](https://github.com/cupcake777/anotify/releases/latest). The
+> project named `anotify` on PyPI is unrelated; install the Python CLI from this
+> repository.
 
 ## Install the Python CLI
 
@@ -18,8 +19,10 @@ anotify config --server https://your-relay.example.com --token YOUR_TOKEN
 
 ## Tauri desktop app
 
-The Tauri app is the primary desktop experience. Until installers are attached
-to a public release, build it from source:
+The Tauri app is the primary desktop experience. Download the unsigned beta
+installer for your platform from the public
+[GitHub Release](https://github.com/cupcake777/anotify/releases/latest), or build
+it from source:
 
 ```bash
 cd desktop

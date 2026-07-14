@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-source_preview-E59A63?style=flat-square" alt="Source preview"/>
+  <img src="https://img.shields.io/badge/status-v0.2.1_beta-E59A63?style=flat-square" alt="v0.2.1 beta"/>
   <img src="https://img.shields.io/badge/Windows%20%7C%20macOS%20%7C%20Linux-24446F?style=flat-square" alt="Windows, macOS, and Linux"/>
   <img src="https://img.shields.io/badge/Python%203.9%2B%20%2B%20Tauri%202-3776AB?style=flat-square" alt="Python 3.9+ and Tauri 2"/>
   <img src="https://img.shields.io/badge/relay-self--hosted-48B079?style=flat-square" alt="Self-hosted relay"/>
@@ -25,7 +25,7 @@
 </p>
 
 > [!NOTE]
-> **Source preview.** Public installers and a public Python package have not been released. The project named `anotify` on PyPI is unrelated; install this repository from source for now.
+> **Public beta.** Unsigned desktop installers are available from [GitHub Releases](https://github.com/cupcake777/anotify/releases/latest). The project named `anotify` on PyPI is unrelated; install the Python CLI from this repository.
 
 A long job should not require a terminal vigil. An agent should not wait forever for one human decision. `anotify` gives remote work a short path back to your desktop:
 
@@ -289,7 +289,7 @@ Build output is written under:
 desktop/src-tauri/target/release/bundle/
 ```
 
-Platform packages are unsigned during the source-preview phase. See [`desktop/README.md`](desktop/README.md) for prerequisites and local development.
+Platform packages in the public beta are unsigned. Download them from [GitHub Releases](https://github.com/cupcake777/anotify/releases/latest), verify them against `SHA256SUMS.txt`, and see [`desktop/README.md`](desktop/README.md) for platform notes and local development.
 
 ### Python desktop client
 
@@ -343,14 +343,15 @@ Small, focused pull requests are easiest to review. Include a test for behavior 
 
 ## Project status
 
-The sender, relay, Tauri desktop app, approval path, and cross-platform build workflows are implemented and tested from source. The next milestone is the first public desktop release, followed by package-name and distribution decisions for the Python CLI.
+The sender, relay, Tauri desktop app, approval path, and cross-platform build workflows are implemented. `v0.2.1` is the first public desktop beta; package-name and distribution decisions for the Python CLI remain open.
 
-Until then:
+During the beta:
 
-- install from this repository, not PyPI;
+- download unsigned desktop installers from [GitHub Releases](https://github.com/cupcake777/anotify/releases/latest);
+- install the Python CLI from this repository, not PyPI;
 - expect config and UI details to evolve;
 - do not treat the in-memory relay as durable storage;
-- review source-preview builds before using them for production approvals.
+- review beta builds before using them for production approvals.
 
 ## License
 

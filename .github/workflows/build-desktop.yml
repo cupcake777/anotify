@@ -130,3 +130,24 @@ jobs:
             desktop/src-tauri/target/release/bundle/**/*.deb
             desktop/src-tauri/target/release/bundle/**/*.rpm
             desktop/src-tauri/target/release/bundle/**/*.AppImage
+
+  checksums:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --dir release-assets
+      - name: Generate SHA256SUMS.txt
+        run: |
+          cd release-assets
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%f\0' \
+            | sort -z \
+            | xargs -0 sha256sum > SHA256SUMS.txt
+          test -s SHA256SUMS.txt
+      - name: Upload checksums
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${GITHUB_REF_NAME}" release-assets/SHA256SUMS.txt --repo "${GITHUB_REPOSITORY}" --clobber
