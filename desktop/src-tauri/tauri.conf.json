@@ -1,0 +1,65 @@
+{
+  "productName": "anotify",
+  "version": "0.2.1",
+  "identifier": "com.anotify.desktop",
+  "build": {
+    "frontendDist": "../src",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "",
+    "beforeBuildCommand": ""
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "anotify",
+        "url": "index.html",
+        "width": 480,
+        "height": 620,
+        "minWidth": 400,
+        "minHeight": 480,
+        "visible": true,
+        "center": true,
+        "resizable": true,
+        "decorations": false,
+        "transparent": true,
+        "shadow": false
+      },
+      {
+        "label": "toasts",
+        "title": "anotify toasts",
+        "url": "toast.html",
+        "width": 320,
+        "height": 420,
+        "transparent": true,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "focus": false,
+        "resizable": false,
+        "visible": false,
+        "shadow": false
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "withGlobalTauri": true,
+    "macOSPrivateApi": true
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "category": "Utility",
+    "shortDescription": "Cross-platform remote notification system",
+    "longDescription": "Desktop notification relay for AI agents and remote automation."
+  }
+}

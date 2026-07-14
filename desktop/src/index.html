@@ -1,0 +1,789 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>anotify</title>
+<style>
+:root{
+  --cream:#fffaf3; --cream-2:#fff1d2; --panel:rgba(255,253,247,.88);
+  --navy:#24446f; --navy-ink:#173154; --ink:#46566f; --muted:#8493a8;
+  --line:#d1dbe9; --line-strong:#b7c6dc;
+  --k-complete:#48b079; --k-error:#ec6a6a; --k-approval:#eba33a; --k-message:#5aa6f0; --k-info:#93a6c2;
+  --text-on-accent:#102640; --text-on-dark:var(--cream);
+  --t-complete:#176b45; --t-error:#9f2727; --t-approval:#7b4b00; --t-message:#245f97; --t-info:#4e6684;
+  --ok:#48b079; --bad:#ec6a6a; --idle:#9ca3af;
+  --shadow:0 14px 28px -22px rgba(11,36,71,.45),2px 3px 0 rgba(19,41,68,.10);
+  --shadow-press:2px 3px 0 rgba(19,41,68,.11);
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{
+  background:
+    radial-gradient(520px 300px at 8% -8%, rgba(255,232,170,.68) 0%, transparent 62%),
+    radial-gradient(360px 240px at 96% 8%, rgba(196,163,90,.16) 0%, transparent 70%),
+    linear-gradient(180deg, var(--cream) 0%, #fff0cd 100%);
+  color:var(--navy-ink);
+  font-family:system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',sans-serif;
+  font-size:14px;line-height:1.5}
+.app{width:480px;max-width:100vw;min-height:620px;margin:0 auto;padding:10px 14px 18px;display:flex;flex-direction:column;gap:10px;position:relative;
+  background:linear-gradient(180deg,rgba(255,253,247,.82),rgba(255,247,226,.62));
+  border:1px solid rgba(209,196,176,.82);border-radius:0 0 18px 18px;
+  box-shadow:0 18px 42px -28px rgba(64,46,20,.42),inset 0 1px 0 rgba(255,255,255,.72)}
+.app::before{content:"";position:absolute;top:0;left:14px;right:14px;height:3px;border-radius:0 0 3px 3px;
+  background:linear-gradient(90deg,var(--k-approval),var(--k-complete),var(--k-message))}
+
+
+/* ── Custom frameless chrome ── */
+.chrome{height:34px;display:flex;align-items:center;gap:8px;margin:2px 0 2px;padding:0 6px 0 12px;border-radius:10px;background:linear-gradient(135deg,rgba(255,250,243,.82),rgba(255,241,210,.55));border:1px solid rgba(209,196,176,.82);box-shadow:1px 2px 0 rgba(19,41,68,.06);user-select:none}
+.drag-region{flex:1;height:100%;display:flex;align-items:center;gap:7px;font-family:ui-monospace,'JetBrains Mono',monospace;font-size:11px;font-weight:800;color:#7a6b55;letter-spacing:.02em}
+.winbtn{appearance:none;border:none;background:transparent;color:var(--muted);width:30px;height:26px;border-radius:7px;font-size:15px;line-height:1;display:grid;place-items:center;cursor:pointer;font-family:system-ui,sans-serif;font-weight:800}
+.winbtn:hover{background:rgba(36,68,111,.10);color:var(--navy-ink)}
+.winbtn.close:hover{background:var(--k-error);color:var(--text-on-accent)}
+
+/* ── Header / status ── */
+.header{display:flex;align-items:center;gap:12px;padding:11px 12px;background:rgba(255,255,255,.46);border:1px solid rgba(209,196,176,.86);border-radius:12px;box-shadow:1px 2px 0 rgba(19,41,68,.07);backdrop-filter:blur(6px)}
+.bird{width:50px;height:50px;flex:none;border-radius:12px;display:grid;place-items:center;
+  background:radial-gradient(circle at 50% 38%,#fff 0%,#fff7e5 74%,#f3dfb5 100%);border:1.5px solid rgba(196,163,90,.50);box-shadow:inset 0 1px 0 #fff,2px 3px 0 rgba(19,41,68,.10);overflow:hidden}
+.bird img{width:40px;height:40px;display:block;object-fit:contain;image-rendering:pixelated;image-rendering:crisp-edges;filter:drop-shadow(0 1px 1px rgba(11,36,71,.08))}
+.bird.dnd img{opacity:.58;filter:grayscale(.25)}
+.brand{display:flex;flex-direction:column;gap:1px;min-width:0}
+.brand h1{margin:0;font-size:21px;font-weight:850;letter-spacing:-.02em;line-height:1;color:var(--navy-ink)}
+.brand .tag{font-family:ui-monospace,'JetBrains Mono',monospace;font-size:11px;color:#6f7d92;font-weight:650;margin-top:3px}
+.status{margin-left:auto;display:flex;align-items:center;gap:6px;flex:none;background:#fff;border:1px solid rgba(209,196,176,.86);border-radius:999px;padding:5px 8px 5px 7px;box-shadow:1px 2px 0 rgba(19,41,68,.06)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--idle);box-shadow:0 0 0 0 rgba(72,176,121,.5);flex:none}
+.dot.ok{background:var(--ok);animation:pulse 2.4s ease-in-out infinite}
+.dot.bad{background:var(--bad)}
+.status .label{font-weight:700;font-size:14px;color:var(--navy-ink)}
+.status .sub{display:none;font-family:ui-monospace,monospace;font-size:10px;color:var(--muted);max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── Tabs ── */
+.tabs{display:flex;gap:6px;padding:4px;background:rgba(255,255,255,.55);border:1px solid rgba(209,196,176,.86);border-radius:10px;box-shadow:1px 2px 0 rgba(19,41,68,.05)}
+.tab{appearance:none;border:none;background:transparent;cursor:pointer;font-family:inherit;font-weight:700;font-size:13px;
+  color:var(--muted);padding:6px 14px;border-radius:6px;position:relative}
+.tab[aria-selected="true"]{color:var(--text-on-dark);background:var(--navy);box-shadow:var(--shadow-press)}
+.tab .count{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;margin-left:6px;border-radius:9px;
+  font-family:ui-monospace,monospace;font-size:10px;font-weight:850;color:var(--text-on-accent);background:var(--k-approval);vertical-align:1px}
+.tab .count[hidden]{display:none}
+
+main{flex:1;min-height:0;overflow:auto;padding:2px 4px 0 0;scrollbar-width:thin;scrollbar-color:#d8c59d transparent}main::-webkit-scrollbar{width:10px}main::-webkit-scrollbar-thumb{background:#d8c59d;border-radius:999px;border:3px solid transparent;background-clip:content-box}main::-webkit-scrollbar-track{background:transparent}
+.view{display:none}.view.active{display:block}
+
+/* ── Inbox ── */
+.inbox{display:flex;flex-direction:column;gap:10px}
+.card{position:relative;background:var(--panel);border:1.5px solid var(--line);border-radius:8px;
+  padding:10px 12px 10px 14px;box-shadow:var(--shadow-press);overflow:hidden;backdrop-filter:blur(8px);transition:transform .12s,box-shadow .12s}
+.card:hover{transform:translateY(-1px);box-shadow:var(--shadow)}
+.card::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--accent,var(--k-info))}
+.card .row{display:flex;align-items:baseline;gap:10px;padding-right:24px}
+.card .title{font-weight:700;font-size:15px;color:var(--navy-ink);letter-spacing:-.01em}
+.card .time{margin-left:auto;font-family:ui-monospace,monospace;font-size:11px;color:var(--muted);flex:none}
+.card .msg{margin-top:3px;font-family:ui-monospace,monospace;font-size:12.5px;line-height:1.5;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.chip{font-family:ui-monospace,monospace;font-size:10px;font-weight:600;color:#43577a;background:color-mix(in srgb,var(--navy) 9%,#fff);
+  border:1.5px solid var(--line);border-radius:7px;padding:2px 7px}
+.chip.kind{color:var(--text-on-accent);background:var(--accent,var(--k-info));border-color:color-mix(in srgb,var(--accent,var(--k-info)) 64%,#102640);font-weight:850}
+.actions{display:flex;gap:8px;margin-top:11px;justify-content:center}
+.btn{appearance:none;font-family:inherit;font-weight:800;font-size:12.5px;cursor:pointer;border-radius:7px;padding:7px 13px;
+  border:1.5px solid var(--line-strong);background:#fff;color:var(--navy);box-shadow:var(--shadow-press);transition:transform .06s,box-shadow .06s}
+.btn:active{transform:translateY(1px);box-shadow:none}
+.btn.accept{background:var(--k-complete);color:var(--text-on-accent);border-color:color-mix(in srgb,var(--k-complete) 70%,#000 12%)}
+.btn.deny{background:#fff;color:var(--k-error);border-color:color-mix(in srgb,var(--k-error) 55%,#fff)}
+.resolved{margin-top:10px;font-weight:700;font-size:13.5px}
+.card .full-detail{margin-top:8px;padding-top:8px;border-top:1.5px dashed var(--line);font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;color:var(--ink);white-space:pre-wrap;word-break:break-word;max-height:0;overflow:hidden;transition:max-height .26s ease,padding .26s ease,margin .26s ease;padding:0;margin:0;border:none;scrollbar-width:thin;scrollbar-color:#d8c59d transparent}
+.card.open .full-detail{max-height:360px;margin-top:8px;padding-top:8px;border-top:1.5px dashed var(--line)}
+.card .del{position:absolute;top:6px;right:6px;width:22px;height:22px;border-radius:6px;
+  border:none;background:transparent;color:var(--muted);cursor:pointer;display:grid;place-items:center;
+  font-size:14px;line-height:1;opacity:0;transition:opacity .12s;z-index:2}
+.card:hover .del{opacity:1}
+.card .del:hover{background:rgba(236,106,106,.15);color:var(--k-error)}
+.empty{text-align:center;color:var(--muted);padding:38px 22px;margin-top:6px;background:rgba(255,255,255,.42);border:1px dashed rgba(196,163,90,.52);border-radius:14px;box-shadow:inset 0 1px 0 rgba(255,255,255,.7)}
+.empty::before{content:'✉';display:grid;place-items:center;width:44px;height:44px;margin:0 auto 10px;border-radius:12px;background:#fff;border:1px solid rgba(209,196,176,.86);box-shadow:1px 2px 0 rgba(19,41,68,.07);font-size:20px;color:var(--k-message)}
+.empty .big{font-size:15.5px;font-weight:800;color:var(--navy-ink);margin-bottom:4px}
+.empty .small{font-family:ui-monospace,monospace;font-size:11.5px;color:#6f7d92}
+.toolbar{display:flex;justify-content:flex-end;margin:0 0 5px;min-height:20px}
+.toolbar.is-empty{visibility:hidden}
+.linkbtn{appearance:none;border:none;background:none;cursor:pointer;font-family:ui-monospace,monospace;font-size:11.5px;
+  font-weight:800;color:#5d6f89;text-decoration:underline;text-decoration-color:rgba(93,111,137,.36);text-underline-offset:2px}
+.linkbtn:hover{color:var(--navy);text-decoration-color:currentColor}
+
+/* ── Settings ── */
+.settings{max-width:none;display:flex;flex-direction:column;gap:12px}
+.field{margin-bottom:0;background:linear-gradient(180deg,rgba(255,255,255,.72),rgba(255,250,239,.68));border:1px solid rgba(209,196,176,.88);border-radius:11px;padding:13px 14px;box-shadow:1px 2px 0 rgba(19,41,68,.07),inset 0 1px 0 rgba(255,255,255,.78);backdrop-filter:blur(6px)}
+.field label{display:block;font-weight:800;font-size:13.5px;margin-bottom:7px;color:var(--navy-ink)}
+.field .help{font-family:ui-monospace,monospace;font-size:11px;line-height:1.4;color:#6f7d92;margin-top:6px}
+.field input[type=text],.field input[type=password],.field select{width:100%;font-family:ui-monospace,monospace;font-size:13px;
+  padding:9px 11px;border:1px solid rgba(183,198,220,.92);border-radius:8px;background:#fff;color:var(--navy-ink);box-shadow:inset 0 1px 2px rgba(19,41,68,.05)}
+.field input:focus,.field select:focus{outline:none;border-color:var(--k-message);box-shadow:0 0 0 3px rgba(90,166,240,.13),inset 0 1px 2px rgba(19,41,68,.05)}
+.switch{display:flex;align-items:center;gap:11px;cursor:pointer;font-weight:800;font-size:13.5px;color:var(--navy-ink)}
+.switch input{appearance:none;width:44px;height:25px;border-radius:13px;background:#d7ddc9;position:relative;cursor:pointer;flex:none;transition:background .15s;border:1px solid rgba(105,119,139,.20);box-shadow:inset 1px 1px 2px rgba(11,36,71,.12)}
+.switch input::after{content:"";position:absolute;top:2px;left:2px;width:19px;height:19px;border-radius:8px;background:#fff;box-shadow:1px 2px 0 rgba(11,36,71,.16);transition:left .15s}
+.switch input:checked{background:color-mix(in srgb,var(--k-complete) 70%,#e9e1c8)}
+.switch input:checked::after{left:21px}
+.btn.primary{background:var(--navy);color:var(--text-on-dark);border-color:var(--navy-ink);padding:9px 20px}
+.saved{font-family:ui-monospace,monospace;font-size:11.5px;color:var(--t-complete);font-weight:800;opacity:0;transition:opacity .2s}
+.saved.bad{color:var(--t-error)}
+.saved.show{opacity:1}
+.device-count{float:right;font-family:ui-monospace,monospace;font-size:10px;color:var(--text-on-dark);background:var(--navy);border-radius:999px;padding:2px 8px;margin-top:0;box-shadow:1px 2px 0 rgba(19,41,68,.09)}
+.device-list{display:flex;flex-direction:column;gap:8px}
+.device{display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:10px;font-family:ui-monospace,monospace;color:var(--ink);background:linear-gradient(180deg,#fff,#fff8e8);border:1px solid rgba(209,196,176,.88);border-radius:10px;padding:10px 11px;box-shadow:inset 0 1px 0 #fff,1px 2px 0 rgba(19,41,68,.08)}
+.device-icon{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--navy) 10%,#fff);font-size:17px;border:1px solid rgba(183,198,220,.72);box-shadow:inset 0 1px 0 #fff}
+.device-main{min-width:0}.device-name{display:block;font-weight:850;font-size:12.5px;color:var(--navy-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.device-sub{display:block;margin-top:2px;font-size:10.5px;color:#6f7d92;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.device-state{display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:850;color:#7d6a60;background:#fff;border:1px solid rgba(209,196,176,.72);border-radius:999px;padding:3px 7px;box-shadow:1px 1px 0 rgba(19,41,68,.05)}
+.device-dot{width:8px;height:8px;border-radius:50%;background:var(--k-error);border:1px solid color-mix(in srgb,var(--k-error) 75%,#000)}
+.device.online .device-dot{background:var(--ok);border-color:var(--ok);box-shadow:0 0 0 3px rgba(72,176,121,.16)}
+.device.online .device-state{color:#3f7c59}
+.device.blank{grid-template-columns:1fr;text-align:center;color:#6f7d92;font-size:11.5px;font-weight:700}
+.setup-card{border-style:solid;background:linear-gradient(180deg,rgba(255,255,255,.82),rgba(238,247,255,.58))}.setup-card input{font-size:13.5px}.setup-actions{display:flex;gap:9px;align-items:center;justify-content:center;flex-wrap:wrap;margin-top:10px}
+
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(72,176,121,.5)}50%{box-shadow:0 0 0 5px rgba(72,176,121,0)}}
+@media (prefers-reduced-motion:reduce){.bird img,.dot.ok{animation:none}}
+@media (max-width:500px){.app{width:100vw;min-height:100vh;border-radius:0;padding:10px 12px 18px}.brand h1{font-size:21px}}
+
+/* ── Airy rounded dashboard shell ── */
+html{min-height:100%;overflow:hidden;background:transparent}
+body{min-height:100%;display:flex;align-items:center;justify-content:center;padding:10px;overflow:hidden;border-radius:30px;clip-path:inset(0 round 30px);
+  position:relative;isolation:isolate;background:transparent}
+body::before,body::after{content:"";position:fixed;z-index:-1;pointer-events:none;border-radius:50%;filter:blur(34px);opacity:.52;will-change:transform,opacity}
+body::before{width:260px;height:260px;left:-72px;top:-54px;background:radial-gradient(circle,rgba(255,196,92,.48),rgba(255,224,164,.16) 58%,transparent 72%);animation:glowWarm 12s ease-in-out infinite alternate}
+body::after{width:300px;height:300px;right:-106px;bottom:-84px;background:radial-gradient(circle,rgba(91,167,244,.34),rgba(137,202,238,.12) 58%,transparent 72%);animation:glowCool 15s ease-in-out infinite alternate}
+.app{width:min(440px,calc(100vw - 20px));min-height:calc(100vh - 20px);max-height:calc(100vh - 20px);padding:12px 15px 15px;gap:10px;border:1px solid rgba(255,255,255,.84);border-radius:28px;
+  background:linear-gradient(155deg,rgba(255,253,248,.71),rgba(250,240,219,.56));
+  box-shadow:0 24px 60px -32px rgba(38,50,73,.44),inset 0 1px 0 rgba(255,255,255,.9);overflow:hidden;backdrop-filter:blur(22px) saturate(1.12)}
+.app::before{content:"";display:block;position:absolute;z-index:0;inset:-35%;pointer-events:none;background:conic-gradient(from 120deg at 50% 50%,transparent 0 22%,rgba(255,207,113,.10) 31%,transparent 43% 64%,rgba(97,177,245,.09) 73%,transparent 84%);animation:sheenDrift 18s linear infinite}
+.app>*{position:relative;z-index:1}
+.chrome{height:28px;margin:0;padding:0 2px 0 8px;display:flex;align-items:center;gap:8px;background:transparent;border:none;box-shadow:none}
+.drag-region{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:#758397}
+.window-actions{display:flex;align-items:center;gap:6px}
+.winbtn{width:auto;height:27px;padding:0 9px;border:1px solid rgba(175,190,211,.58);border-radius:11px;background:rgba(255,255,255,.48);color:#63738a;display:flex;align-items:center;gap:5px;font-size:10.5px;font-weight:750;box-shadow:inset 0 1px 0 rgba(255,255,255,.82);backdrop-filter:blur(8px)}
+.winbtn .control-icon{font-size:14px;line-height:1}.winbtn:hover{background:rgba(255,255,255,.78);border-color:rgba(132,154,185,.72);color:var(--navy)}
+.winbtn.hide:hover{background:rgba(90,166,240,.12);border-color:rgba(90,166,240,.36);color:var(--navy)}
+.winbtn.close{width:29px;padding:0;justify-content:center;color:#68778b}.winbtn.close:hover{background:rgba(236,106,106,.14);border-color:rgba(236,106,106,.40);color:var(--t-error)}.winbtn.close .control-icon{font-size:16px;font-weight:650;transform:translateY(-.5px)}
+.header{align-items:center;padding:11px 13px;gap:11px;border:1px solid rgba(255,255,255,.82);border-radius:22px;background:rgba(255,255,255,.50);box-shadow:0 12px 28px -24px rgba(26,50,82,.36),inset 0 1px 0 rgba(255,255,255,.86);backdrop-filter:blur(14px)}
+.bird{width:52px;height:52px;border-radius:17px;border:1px solid rgba(190,204,222,.56);background:rgba(255,255,255,.64);box-shadow:0 10px 22px -18px rgba(26,50,82,.34),inset 0 1px 0 #fff;overflow:hidden}
+.bird img{width:47px;height:47px;image-rendering:auto;object-fit:contain;filter:drop-shadow(0 3px 3px rgba(11,36,71,.10))}.bird.dnd img{opacity:.62}
+.brand h1{font-size:23px;font-weight:900;color:var(--navy)}.brand .tag{font-size:10.5px;color:#637289;max-width:170px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.status{min-width:102px;justify-content:center;border:1px solid rgba(255,255,255,.86);padding:7px 10px;background:rgba(255,255,255,.60);box-shadow:inset 0 1px 0 #fff;backdrop-filter:blur(10px)}
+.status .label{font-family:ui-monospace,'JetBrains Mono',monospace;font-size:11px;text-transform:uppercase;letter-spacing:.03em}.status .sub{display:block;font-size:9px;text-align:left;color:#607189;max-width:88px}
+.tabs{gap:6px;margin-top:0;padding:4px;border:1px solid rgba(255,255,255,.80);border-radius:18px;background:rgba(255,255,255,.36);box-shadow:inset 0 1px 0 rgba(255,255,255,.72);backdrop-filter:blur(12px)}
+.tab{flex:1;padding:7px 0;border-radius:13px;font-size:13.5px;font-weight:820;color:#66758b}.tab[aria-selected="true"]{background:rgba(36,68,111,.94);color:var(--cream);box-shadow:0 8px 18px -12px rgba(36,68,111,.8)}.tab .count{margin-left:5px;min-width:19px;height:18px;padding:1px 5px}
+main{padding:2px 7px 8px 2px;scrollbar-gutter:stable;scrollbar-color:rgba(122,143,171,.64) rgba(255,255,255,.18)}main::-webkit-scrollbar-thumb{background:rgba(122,143,171,.64);border-radius:999px;border:3px solid transparent;background-clip:content-box}.view{padding:2px}
+.dashboard-overview{display:flex;flex-direction:column;gap:9px}
+.hero-panel{position:relative;padding:13px 15px 12px;border:1px solid rgba(255,255,255,.82);border-radius:24px;background:linear-gradient(145deg,rgba(255,255,255,.62),rgba(255,247,227,.44));box-shadow:0 16px 32px -28px rgba(26,50,82,.38),inset 0 1px 0 rgba(255,255,255,.86);overflow:hidden;backdrop-filter:blur(14px)}
+.hero-panel::after{content:"";position:absolute;right:-42px;top:-54px;width:160px;height:160px;border-radius:50%;background:radial-gradient(circle,rgba(90,166,240,.13),rgba(235,163,58,.04) 64%,transparent 70%)}
+.hero-copy{position:relative;z-index:1}.eyebrow{font-family:ui-monospace,'JetBrains Mono',monospace;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.10em;color:var(--t-approval)}
+.hero-title{margin:3px 0 5px;font-size:21px;line-height:1.08;font-weight:900;letter-spacing:-.035em;color:var(--navy)}
+.hero-text{max-width:335px;margin:0;color:var(--ink);font-size:12px;line-height:1.42;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.hero-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}.hero-actions .btn{padding:6px 11px;font-size:11px}
+.metric-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}.metric{min-width:0;padding:9px 10px;border:1px solid rgba(255,255,255,.80);border-radius:19px;background:rgba(255,255,255,.48);box-shadow:0 12px 24px -23px rgba(26,50,82,.36),inset 0 1px 0 rgba(255,255,255,.84);backdrop-filter:blur(12px)}
+.metric.alert .num{color:var(--t-approval)}.metric .num{display:block;font-family:ui-monospace,'JetBrains Mono',monospace;font-size:18px;font-weight:900;color:var(--navy);line-height:1}.metric .cap{display:block;margin-top:4px;font-size:9.5px;font-weight:800;color:#66758b;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.system-panel{border:1px solid rgba(255,255,255,.76);border-radius:21px;background:rgba(255,255,255,.36);overflow:hidden;box-shadow:inset 0 1px 0 rgba(255,255,255,.70);backdrop-filter:blur(12px)}
+.system-head{display:flex;align-items:center;justify-content:space-between;padding:8px 13px 6px;border-bottom:1px solid rgba(183,198,220,.28)}.system-head span{font-family:ui-monospace,'JetBrains Mono',monospace;font-size:10px;font-weight:850;text-transform:uppercase;letter-spacing:.08em;color:#66758b}
+.system-list{display:flex;flex-direction:column}.system-row{display:grid;grid-template-columns:74px 1fr;gap:10px;align-items:center;padding:7px 13px;border-bottom:1px solid rgba(183,198,220,.24)}.system-row:last-child{border-bottom:none}.system-row .key{font-size:10.5px;font-weight:750;color:#68778b}.system-row .value{min-width:0;font-size:12px;font-weight:800;color:var(--navy-ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-align:right}
+.inbox-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:2px 3px 10px}.view-title{margin:0;font-size:16px;font-weight:900;color:var(--navy);letter-spacing:-.02em}.toolbar{margin:0;min-height:auto}.linkbtn{font-size:11px;font-weight:800;text-transform:none}
+.inbox{gap:10px}.card{border:1px solid rgba(255,255,255,.84);border-radius:22px;background:rgba(255,255,255,.56);padding:12px 15px 10px 18px;box-shadow:0 14px 28px -25px rgba(26,50,82,.40),inset 0 1px 0 rgba(255,255,255,.86);backdrop-filter:blur(14px);transition:transform .16s,box-shadow .16s}.card:hover{transform:translateY(-1px);box-shadow:0 17px 30px -24px rgba(26,50,82,.43)}.card::before{width:4px;top:13px;bottom:13px;border-radius:99px}.card .title{font-size:14.5px;font-weight:820}.card .time{color:#607189}.card .msg{font-size:12px;line-height:1.45;color:#52647b}.chip{border:1px solid rgba(183,198,220,.48);border-radius:999px;background:rgba(255,255,255,.48);padding:3px 8px}.chip.kind{border-color:transparent}.actions{justify-content:flex-start}
+.detail-toggle{width:100%;margin-top:9px;padding:7px 9px;border:1px solid rgba(183,198,220,.34);border-radius:12px;background:rgba(255,255,255,.34);color:#52647b;display:flex;align-items:center;justify-content:space-between;font:800 10.5px ui-monospace,'JetBrains Mono',monospace;letter-spacing:.03em;cursor:pointer}.detail-toggle:hover{color:var(--navy);background:rgba(255,255,255,.62)}.detail-chevron{font-size:17px;line-height:1;transition:transform .22s ease}.card.open .detail-chevron{transform:rotate(180deg)}
+.card .full-detail{font-family:ui-monospace,monospace;font-size:11px;line-height:1.55;color:var(--ink);white-space:normal;word-break:break-word;max-height:0;overflow:hidden;opacity:0;transition:max-height .26s ease,padding .26s ease,margin .26s ease,opacity .18s ease;padding:0;margin:0;border:none}.card.open .full-detail{max-height:360px;margin-top:9px;padding:11px 12px;border:1px solid rgba(183,198,220,.34);border-radius:14px;background:rgba(255,255,255,.42);opacity:1}.detail-label{margin-bottom:6px;font-size:9px;font-weight:850;letter-spacing:.08em;text-transform:uppercase;color:#7a879a}.detail-message{margin:0;font:inherit;line-height:1.55;color:var(--ink);white-space:pre-wrap;word-break:break-word}.detail-meta{display:grid;grid-template-columns:68px minmax(0,1fr);gap:5px 10px;margin:10px 0 0;padding-top:9px;border-top:1px solid rgba(183,198,220,.28);font-size:10px}.detail-meta dt{font-weight:800;text-transform:uppercase;letter-spacing:.035em;color:#8290a2}.detail-meta dd{margin:0;color:var(--navy-ink);word-break:break-word}.card .del{top:9px;right:9px;border-radius:10px}.empty{margin-top:28px;padding:44px 22px;border:1px dashed rgba(196,163,90,.40);border-radius:23px;background:rgba(255,255,255,.35);box-shadow:inset 0 1px 0 rgba(255,255,255,.74)}.empty::before{border:1px solid rgba(255,255,255,.78);border-radius:15px;background:rgba(255,255,255,.58);box-shadow:none}
+.settings{gap:8px}.settings-section-title{font-size:10px;font-weight:850;letter-spacing:.10em;text-transform:uppercase;color:#66758b;margin:6px 6px 0}.field{border:1px solid rgba(255,255,255,.82);border-radius:21px;background:rgba(255,255,255,.47);box-shadow:0 13px 26px -25px rgba(26,50,82,.38),inset 0 1px 0 rgba(255,255,255,.84);padding:11px 13px;backdrop-filter:blur(14px)}.field label{font-size:13px}.field .help{font-size:10.5px;line-height:1.35;color:#586a82}.field input[type=text],.field input[type=password],.field select{border:1px solid rgba(170,188,213,.62);border-radius:13px;background:rgba(255,255,255,.68);box-shadow:inset 0 1px 2px rgba(19,41,68,.035)}
+.setting-stack{display:flex;flex-direction:column;gap:0}.setting-row{padding:9px 0;border-bottom:1px solid rgba(183,198,220,.28)}.setting-row:first-child{padding-top:0}.setting-row:last-child{padding-bottom:0;border-bottom:none}.setting-row label{margin-bottom:5px}.select-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.select-grid .setting-row{border-bottom:none;padding:0}.setup-actions{justify-content:flex-start;margin-top:9px}.device-count{float:none;margin-left:6px;vertical-align:1px}.device-list{margin-top:8px}.device{border:1px solid rgba(255,255,255,.82);border-radius:17px;background:rgba(255,255,255,.48);box-shadow:inset 0 1px 0 #fff}.device-icon{border-radius:13px;border:1px solid rgba(183,198,220,.44);background:rgba(255,255,255,.50)}
+.btn{border:1px solid rgba(168,186,211,.62);border-radius:13px;background:rgba(255,255,255,.62);box-shadow:0 8px 16px -13px rgba(26,50,82,.40)}.btn:hover{transform:translateY(-1px);box-shadow:0 10px 18px -13px rgba(26,50,82,.46)}.btn:active{transform:translateY(0);box-shadow:none}.btn.primary{background:rgba(36,68,111,.95);border-color:rgba(36,68,111,.72)}
+.saved{position:absolute;right:22px;bottom:18px;z-index:8;display:block;padding:7px 11px;border:1px solid rgba(72,176,121,.24);border-radius:999px;background:rgba(242,255,247,.88);box-shadow:0 12px 26px -16px rgba(26,50,82,.42);backdrop-filter:blur(12px);opacity:0;transform:translateY(6px);pointer-events:none;transition:opacity .18s,transform .18s}.saved.bad{border-color:rgba(236,106,106,.28);background:rgba(255,245,245,.90)}.saved.show{opacity:1;transform:translateY(0)}
+@keyframes glowWarm{0%{transform:translate3d(-8px,-4px,0) scale(.94);opacity:.38}100%{transform:translate3d(54px,30px,0) scale(1.12);opacity:.64}}
+@keyframes glowCool{0%{transform:translate3d(12px,12px,0) scale(1.04);opacity:.34}100%{transform:translate3d(-58px,-34px,0) scale(.90);opacity:.58}}
+@keyframes sheenDrift{0%{transform:rotate(0deg) scale(1)}50%{transform:rotate(180deg) scale(1.06)}100%{transform:rotate(360deg) scale(1)}}
+@media (prefers-reduced-motion:reduce){body::before,body::after,.app::before,.bird img,.dot.ok,.detail-chevron,.saved{animation:none;transition:none}}
+@media (max-width:500px){body{padding:10px}.app{width:calc(100vw - 20px);min-height:calc(100vh - 20px);max-height:calc(100vh - 20px);border-radius:28px}.select-grid{grid-template-columns:1fr}.select-grid .setting-row:first-child{padding-bottom:12px;border-bottom:1px solid rgba(183,198,220,.28)}.drag-region{font-size:9px;letter-spacing:.05em}.winbtn{padding:0 7px;font-size:10px}}
+
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="chrome">
+    <div class="drag-region" data-tauri-drag-region>anotify control</div>
+    <div class="window-actions" aria-label="Window controls">
+      <button class="winbtn" id="minBtn" title="Minimize window" aria-label="Minimize window"><span class="control-icon" aria-hidden="true">−</span><span class="control-text">Minimize</span></button>
+      <button class="winbtn hide" id="hideBtn" title="Hide window to tray" aria-label="Hide window"><span class="control-icon" aria-hidden="true">↘</span><span class="control-text">Hide</span></button>
+      <button class="winbtn close" id="closeBtn" title="Close window — anotify keeps running in the tray" aria-label="Close window"><span class="control-icon" aria-hidden="true">×</span></button>
+    </div>
+  </div>
+  <header class="header">
+    <div class="bird" id="bird"><img id="birdImg" src="assets/brand/07_app_icon.png" alt="anotify app icon"/></div>
+    <div class="brand">
+      <h1>anotify</h1>
+      <span class="tag">tiny messages · big heart</span>
+    </div>
+    <div class="status">
+      <span class="dot" id="dot"></span>
+      <div>
+        <div class="label" id="statusLabel">Connecting…</div>
+        <div class="sub" id="statusSub">—</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" aria-selected="true" data-view="overview">Overview</button>
+    <button class="tab" role="tab" aria-selected="false" data-view="inbox">
+      Inbox<span class="count" id="approvalCount" hidden>0</span>
+    </button>
+    <button class="tab" role="tab" aria-selected="false" data-view="settings">Settings</button>
+  </div>
+
+  <main>
+    <section class="view active" id="view-overview">
+      <div class="dashboard-overview">
+        <div class="hero-panel">
+          <div class="hero-copy">
+            <div class="eyebrow" id="heroEyebrow">Activity</div>
+            <h2 class="hero-title" id="heroTitle">All caught up</h2>
+            <p class="hero-text" id="heroText">No notifications need your attention.</p>
+            <div class="hero-actions">
+              <button class="btn primary" data-test-notification>Verify connection</button>
+              <button class="btn" data-go-view="inbox">View inbox</button>
+            </div>
+          </div>
+        </div>
+        <div class="metric-grid">
+          <div class="metric alert"><span class="num" id="metricPending">0</span><span class="cap">Needs action</span></div>
+          <div class="metric"><span class="num" id="metricTotal">0</span><span class="cap">Inbox</span></div>
+          <div class="metric"><span class="num" id="metricDevices">0</span><span class="cap">Online</span></div>
+        </div>
+        <div class="system-panel">
+          <div class="system-head"><span>System</span><button class="linkbtn inline" data-go-view="settings">Manage</button></div>
+          <div class="system-list">
+            <div class="system-row"><span class="key">Desktop</span><span class="value" id="overviewDevice">Unnamed desktop</span></div>
+            <div class="system-row"><span class="key">Latest</span><span class="value" id="overviewDelivery">No notifications yet</span></div>
+            <div class="system-row"><span class="key">Mode</span><span class="value" id="overviewMode">Normal</span></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="view" id="view-inbox">
+      <div class="inbox-head"><h2 class="view-title">Inbox</h2><div class="toolbar"><button class="linkbtn" id="clearBtn">Clear all</button></div></div>
+      <div class="inbox" id="inbox"></div>
+      <div class="empty" id="inboxEmpty">
+        <div class="big">No notifications yet</div>
+        <div class="small">Send one: <code>anotify send "hello"</code></div>
+      </div>
+    </section>
+
+    <section class="view" id="view-settings">
+      <div class="settings">
+        <div class="settings-section-title">Connection</div>
+        <div class="field setup-card">
+          <label for="setupCode">Connect this desktop</label>
+          <input type="password" id="setupCode" placeholder="Setup code (optional)" autocomplete="off"/>
+          <div class="setup-actions">
+            <button class="btn primary" id="quickConnectBtn">Connect</button>
+            <button class="btn" id="testBtn">Verify connection</button>
+          </div>
+          <div class="help">Connects to the public relay by default. Use a setup code for a private relay.</div>
+        </div>
+        <div class="field setting-stack">
+          <div class="setting-row">
+            <label for="deviceName">Desktop name</label>
+            <input type="text" id="deviceName" placeholder="Windows laptop" autocomplete="off"/>
+            <div class="help">Shown when this computer is online.</div>
+          </div>
+          <div class="setting-row">
+            <label class="switch"><input type="checkbox" id="autostart"/> Start on login</label>
+          </div>
+        </div>
+        <div class="settings-section-title">Preferences</div>
+        <div class="field setting-stack">
+          <div class="setting-row">
+            <label class="switch"><input type="checkbox" id="dnd"/> Silence mode</label>
+            <div class="help">Mutes passive toasts. Approvals and critical alerts still appear.</div>
+          </div>
+          <div class="select-grid setting-row">
+            <div class="setting-row">
+              <label for="responseLength">Response length</label>
+              <select id="responseLength">
+                <option value="concise">Concise</option>
+                <option value="balanced">Balanced</option>
+                <option value="detailed">Detailed</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <label for="notificationStyle">Tone</label>
+              <select id="notificationStyle">
+                <option value="default">Default</option>
+                <option value="explanatory">Explanatory</option>
+                <option value="formal">Formal</option>
+                <option value="friendly">Friendly</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="settings-section-title">Devices</div>
+        <div class="field">
+          <label>Connected devices <span class="device-count" id="deviceCount">0</span></label>
+          <div class="device-list" id="devices"></div>
+          <div class="help">Other desktops appear automatically while connected.</div>
+        </div>
+      </div>
+    </section>
+  </main>
+  <span class="saved" id="savedMsg" role="status" aria-live="polite">Saved</span>
+</div>
+
+<script>
+/* ===== anotify dashboard ===== */
+const TAURI = window.__TAURI__ || null;
+const invoke = TAURI?.core?.invoke?.bind(TAURI.core) || null;
+const listen = TAURI?.event?.listen?.bind(TAURI.event) || null;
+const emit = TAURI?.event?.emit?.bind(TAURI.event) || null;
+const appWindow = TAURI?.window?.getCurrentWindow ? TAURI.window.getCurrentWindow() : null;
+
+const ACCENT = {complete:"var(--k-complete)",error:"var(--k-error)",critical:"var(--k-error)",approval:"var(--k-approval)",message:"var(--k-message)",info:"var(--k-info)"};
+
+const RULES=[[["error","fail","failed","crash","exception","traceback"],"error"],
+  [["approval","approve","permission","confirm","authorize","review"],"approval"],
+  [["complete","completed","done","success","succeeded","finished","passed"],"complete"],
+  [["message","msg","reply","new "],"message"]];
+function classify(t="",m="",s="",p="medium"){const x=(s+" "+t+" "+m).toLowerCase();
+  for(const [kw,k] of RULES){if(kw.some(w=>x.includes(w)))return k;} return p==="critical"?"critical":"info";}
+
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const hhmm=ts=>{const d=new Date(ts?ts*1000:Date.now());return String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');};
+const bn=p=>(p||"").replace(/\/+$/,'').split('/').pop();
+
+const inbox=document.getElementById('inbox');
+const inboxEmpty=document.getElementById('inboxEmpty');
+const approvalCount=document.getElementById('approvalCount');
+const heroEyebrow=document.getElementById('heroEyebrow');
+const heroTitle=document.getElementById('heroTitle');
+const heroText=document.getElementById('heroText');
+const metricTotal=document.getElementById('metricTotal');
+const metricPending=document.getElementById('metricPending');
+const metricDevices=document.getElementById('metricDevices');
+const overviewDevice=document.getElementById('overviewDevice');
+const overviewDelivery=document.getElementById('overviewDelivery');
+const overviewMode=document.getElementById('overviewMode');
+let items=[];                    // {data, kind, pending, resolved}
+const seenItems = new Set();
+let dndState=false;
+let lastClients=[];
+let lastDeliveryLabel='No notifications yet';
+
+function kindOf(n){return n.kind||classify(n.title,n.message,n.source,n.priority);}
+function oneLiner(n){return n.summary||(n.script?`${n.script} · ${bn(n.cwd)}`:(n.message||""));}
+function kindLabel(k){return {approval:'Approval',message:'Message',complete:'Complete',error:'Error',critical:'Critical',info:'Info'}[k]||'Info';}
+function visibleDeviceStats(clients=lastClients){
+  const selfId=window.__deviceId||'';
+  const onlineList=(clients||[]).filter(c=>{
+    const id=String(c.id||'');
+    const platform=String(c.platform||'').toLowerCase();
+    if(id.startsWith('sender:')||platform==='remote sender'||platform.startsWith('agent:'))return false;
+    return !(selfId && id===selfId);
+  });
+  const online=onlineList.filter(c=>!c.offline).length;
+  return {online,total:onlineList.length};
+}
+function updateOverview(){
+  const pending=items.filter(it=>it.kind==='approval'&&!it.resolved).length;
+  const latest=[...items].reverse().find(it=>!(it.kind==='approval'&&it.resolved));
+  const stats=visibleDeviceStats(lastClients);
+  if(metricTotal)metricTotal.textContent=String(items.length);
+  if(metricPending)metricPending.textContent=String(pending);
+  if(metricDevices)metricDevices.textContent=String(stats.online);
+  if(overviewDevice)overviewDevice.textContent=(document.getElementById('deviceName')?.value||'Unnamed desktop').trim()||'Unnamed desktop';
+  if(overviewDelivery)overviewDelivery.textContent=lastDeliveryLabel;
+  if(overviewMode)overviewMode.textContent=dndState?'Silence mode':'Normal';
+
+  let title='All caught up', text='No notifications need your attention.', eyebrow='Activity';
+  if(dndState){title='Silence mode'; text='Passive toasts are muted. Approvals and critical alerts still break through.'; eyebrow='Notification mode';}
+  else if(pending>0){title=`${pending} approval${pending>1?'s':''} waiting`; text='Open Inbox to approve or deny the pending request.'; eyebrow='Action needed';}
+  else if(latest){
+    const k=latest.kind;
+    title={complete:'Task complete',error:'Needs attention',critical:'Critical alert',message:'New message',info:'Signal received',approval:'Approval received'}[k]||'Signal received';
+    text=oneLiner(latest.data)||latest.data.title||'Latest event is available in Inbox.';
+    eyebrow=`Latest · ${kindLabel(k)}`;
+  }
+  if(heroEyebrow)heroEyebrow.textContent=eyebrow;
+  if(heroTitle)heroTitle.textContent=title;
+  if(heroText)heroText.textContent=text;
+}
+
+function render(){
+  const pending = items.filter(it=>it.kind==="approval" && !it.resolved).length;
+  approvalCount.textContent=pending; approvalCount.hidden = pending===0;
+  inboxEmpty.style.display = items.length? "none":"block";
+  document.querySelector('.toolbar')?.classList.toggle('is-empty', items.length===0);
+  inbox.innerHTML="";
+  // newest first
+  for(const it of [...items].reverse()){
+    inbox.appendChild(card(it));
+  }
+  updateBird();
+  updateOverview();
+}
+
+function card(it){
+  const n=it.data, kind=it.kind;
+  const el=document.createElement('div');
+  el.className='card';
+  el.style.setProperty('--accent',ACCENT[kind]||ACCENT.info);
+  const chips=[];
+  chips.push(`<span class="chip kind">${esc(kind)}</span>`);
+  if(n.source&&n.source!=="unknown")chips.push(`<span class="chip">${esc(n.source)}</span>`);
+  if(n.agent)chips.push(`<span class="chip">${esc(n.agent)}</span>`);
+  if(n.priority&&n.priority!=="medium")chips.push(`<span class="chip">${esc(n.priority)}</span>`);
+
+  let actions="";
+  if(kind==="approval" && it.pending && !it.resolved){
+    actions=`<div class="resolved" style="color:var(--t-approval)">⌛ Waiting for agent confirmation</div>`;
+  }else if(kind==="approval" && !it.resolved){
+    actions=`<div class="actions">
+      <button class="btn accept" data-act="once">Approve</button>
+      <button class="btn deny" data-act="deny">Deny</button></div>`;
+  }else if(it.resolved){
+    const ok=it.resolved!=="deny";
+    actions=`<div class="resolved" style="color:${ok?'var(--k-complete)':'var(--k-error)'}">${ok?'✔':'✕'} ${esc(label(it.resolved))}</div>`;
+  }
+
+  const detailRows=[];
+  if(n.source&&n.source!=="unknown")detailRows.push(['Source',n.source]);
+  if(n.agent)detailRows.push(['Agent',n.agent]);
+  if(n.priority)detailRows.push(['Priority',n.priority]);
+  detailRows.push(['Type',kindLabel(kind)]);
+  if(n.timestamp)detailRows.push(['Received',new Date(Number(n.timestamp)*1000).toLocaleString()]);
+  const detailText=String(n.fullText||n.message||oneLiner(n)||'Notification received');
+  const detailMeta=detailRows.map(([key,value])=>`<dt>${esc(key)}</dt><dd>${esc(value)}</dd>`).join('');
+
+  el.innerHTML=`
+    <div class="row">
+      <span class="title">${esc(n.title||'Agent notification')}</span>
+      <span class="time">${hhmm(n.timestamp)}</span>
+    </div>
+    ${oneLiner(n)?`<div class="msg">${esc(oneLiner(n))}</div>`:""}
+    <div class="chips">${chips.join("")}</div>
+    ${actions}
+    <button class="detail-toggle" type="button" aria-expanded="false"><span>Details</span><span class="detail-chevron" aria-hidden="true">⌄</span></button>
+    <div class="full-detail">
+      <div class="detail-label">Full message</div>
+      <pre class="detail-message">${esc(detailText)}</pre>
+      <dl class="detail-meta">${detailMeta}</dl>
+    </div>
+    <button class="del" title="Delete">×</button>`;
+
+  el.querySelectorAll('.btn[data-act]').forEach(b=>{
+    b.addEventListener('click',(e)=>{e.stopPropagation();decide(it,b.dataset.act,el);});
+  });
+  // Delete button
+  el.querySelector('.del')?.addEventListener('click',(e)=>{
+    e.stopPropagation();
+    const key=itemKey(it.data);
+    items=items.filter(x=>x!==it);
+    seenItems.delete(key);
+    render();
+  });
+  // Match toast behaviour: one explicit detail panel open at a time.
+  el.querySelector('.detail-toggle')?.addEventListener('click',(event)=>{
+    event.stopPropagation();
+    const opening=!el.classList.contains('open');
+    if(opening){
+      inbox.querySelectorAll('.card.open').forEach(other=>{
+        if(other!==el){
+          other.classList.remove('open');
+          other.querySelector('.detail-toggle')?.setAttribute('aria-expanded','false');
+        }
+      });
+    }
+    el.classList.toggle('open');
+    const isOpen=el.classList.contains('open');
+    event.currentTarget.setAttribute('aria-expanded',String(isOpen));
+    if(isOpen){
+      // Keep the complete rounded detail surface inside the dashboard viewport.
+      window.setTimeout(()=>{
+        const main=el.closest('main');
+        if(!main)return;
+        const cardRect=el.getBoundingClientRect();
+        const mainRect=main.getBoundingClientRect();
+        const overflow=cardRect.bottom-(mainRect.bottom-8);
+        if(overflow>0)main.scrollBy({top:overflow,behavior:'smooth'});
+      },280);
+    }
+  });
+  return el;
+}
+function label(c){return c==="deny"?"Denied":c==="always"?"Always allowed":c==="session"?"Allowed this session":"Approved";}
+
+async function decide(it,choice,el){
+  el.querySelectorAll('.btn').forEach(b=>b.disabled=true);
+  const n=it.data;
+  if(invoke && n.approval_id){
+    try{
+      await invoke('respond_approval',{approvalId:n.approval_id,choice,callbackUrl:n.callback_url||null});
+    }catch(e){
+      const a=el.querySelector('.actions');
+      if(a)a.outerHTML=`<div class="resolved" style="color:var(--t-error)">⚠ ${esc(String(e))}</div>`;
+      return;
+    }
+  }
+  it.pending=choice;
+  render();
+}
+
+function updateBird(){
+  const bird=document.getElementById('bird');
+  bird?.classList.toggle('dnd',dndState);
+}
+
+function itemKey(n){return n.id||[n.timestamp||'',n.title||'',n.message||'',n.source||'',n.priority||''].join('|');}
+function normalizeApproval(n){
+  if(n && n.approval && typeof n.approval === 'object'){
+    n.approval_id = n.approval_id || n.approval.id || n.approval.approval_id || '';
+    n.callback_url = n.callback_url || n.approval.callback_url || '';
+    n.action = n.action || n.approval.command || n.approval.action || '';
+    n.target = n.target || n.approval.description || n.approval.target || '';
+    n.kind = n.kind || 'approval';
+  }
+  return n;
+}
+function addNotification(n){
+  n=normalizeApproval(n||{});
+  const key=itemKey(n);
+  if(seenItems.has(key)){
+    const existing=items.find(it=>itemKey(it.data)===key || (n.approval_id && it.data.approval_id===n.approval_id));
+    if(existing && n._resolved){existing.resolved=n._resolved; render();}
+    return;
+  }
+  seenItems.add(key);
+  const it={data:n,kind:kindOf(n),pending:null,resolved:n._resolved||null};
+  lastDeliveryLabel=`${kindLabel(it.kind)} · ${hhmm(n.timestamp)}`;
+  items.push(it);
+  if(items.length>120){
+    const old=items.shift();
+    if(old)seenItems.delete(itemKey(old.data));
+  }
+  render();
+}
+
+function deviceIcon(platform=''){
+  const p=String(platform).toLowerCase();
+  if(p.includes('darwin')||p.includes('mac'))return '⌘';
+  if(p.includes('win'))return '⊞';
+  if(p.includes('linux'))return '🐧';
+  if(p.includes('hpc'))return 'H';
+  if(p.includes('agent'))return 'A';
+  if(p.includes('ios')||p.includes('android'))return '▯';
+  return '◆';
+}
+function renderDevices(clients=[]){
+  const box=document.getElementById('devices');
+  const count=document.getElementById('deviceCount');
+  if(!box)return;
+  box.innerHTML='';
+  lastClients=clients||[];
+  const selfId=window.__deviceId||'';
+  const onlineList=(clients||[]).filter(c=>{
+    const id=String(c.id||'');
+    const platform=String(c.platform||'').toLowerCase();
+    if(id.startsWith('sender:')||platform==='remote sender'||platform.startsWith('agent:'))return false;
+    return !(selfId && id===selfId);
+  });
+  const list=[...onlineList];
+  const online=onlineList.filter(c=>!c.offline).length;
+  if(count)count.textContent=String(online);
+  updateOverview();
+  if(!list.length){
+    const empty=document.createElement('div');
+    empty.className='device blank';
+    empty.textContent='No remote devices online';
+    box.appendChild(empty);
+    return;
+  }
+  for(const c of list){
+    const el=document.createElement('div');
+    el.className='device '+(c.offline?'':'online');
+    const title=c.name||c.host||c.ip||'desktop';
+    const sub=[c.host||c.ip,c.platform].filter(Boolean).join(' · ') || (c.offline?'last seen unknown':'just now');
+    const state=c.offline?'offline':'online';
+    el.innerHTML=`<span class="device-icon">${esc(deviceIcon(c.platform))}</span><span class="device-main"><span class="device-name">${esc(title)}</span><span class="device-sub">${esc(sub)}</span></span><span class="device-state"><span class="device-dot"></span>${state}</span>`;
+    box.appendChild(el);
+  }
+}
+
+/* ── custom window chrome ── */
+document.getElementById('minBtn')?.addEventListener('click',()=>{try{appWindow?.minimize?.();}catch(e){}});
+document.getElementById('hideBtn')?.addEventListener('click',()=>{try{appWindow?.hide?.();}catch(e){}});
+document.getElementById('closeBtn')?.addEventListener('click',()=>{try{appWindow?.close?.();}catch(e){}});
+
+/* ── connection status ── */
+function setStatus(connected){
+  const dot=document.getElementById('dot');
+  const label=document.getElementById('statusLabel');
+  const sub=document.getElementById('statusSub');
+  dot.className='dot '+(dndState?'':connected?'ok':'bad');
+  if(dndState){label.textContent='Silenced';}
+  else{label.textContent=connected?'Connected':'Disconnected';}
+  sub.textContent=dndState?'Approvals only':connected?'Relay online':'Check settings';
+  if(!window.__clientsSeen)renderDevices([]);
+  updateOverview();
+}
+
+/* ── tabs / overview shortcuts ── */
+function switchView(view){
+  const tab=document.querySelector(`.tab[data-view="${view}"]`);
+  const panel=document.getElementById('view-'+view);
+  if(!tab||!panel)return;
+  document.querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected','false'));
+  tab.setAttribute('aria-selected','true');
+  document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+  panel.classList.add('active');
+}
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>switchView(t.dataset.view)));
+document.querySelectorAll('[data-go-view]').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.goView)));
+
+document.getElementById('clearBtn').addEventListener('click',async()=>{
+  items=[]; seenItems.clear(); render();
+  if(invoke){try{await invoke('clear_notifications');}catch(e){}}
+});
+
+/* ── settings ── */
+const $deviceName=document.getElementById('deviceName'),$setupCode=document.getElementById('setupCode'),
+  $dnd=document.getElementById('dnd'),$autostart=document.getElementById('autostart'),
+  $responseLength=document.getElementById('responseLength'),$notificationStyle=document.getElementById('notificationStyle');
+
+function showSaved(text='Saved', bad=false){
+  const m=document.getElementById('savedMsg');
+  m.textContent=text;
+  m.classList.toggle('bad',!!bad);
+  m.classList.add('show');
+  setTimeout(()=>m.classList.remove('show'),1800);
+}
+function parseSetupCode(raw=''){
+  const text=raw.trim();
+  if(!text)return {};
+  try{
+    const obj=JSON.parse(text);
+    return {server:obj.server||obj.relay||obj.url||'',token:obj.token||obj.key||'',device_name:obj.device_name||obj.device||obj.name||''};
+  }catch(_e){}
+  try{
+    const u=new URL(text);
+    return {server:u.searchParams.get('server')||u.searchParams.get('relay')||u.origin,token:u.searchParams.get('token')||'',device_name:u.searchParams.get('device')||''};
+  }catch(_e){}
+  return {token:text};
+}
+
+async function loadSettings(){
+  if(!invoke){return;}
+  try{
+    const c=await invoke('get_config');
+    $deviceName.value=c.device_name||"";
+    window.__deviceId=c.device_id||"";
+    $dnd.checked=!!c.dnd; $autostart.checked=!!c.autostart;
+    $responseLength.value=c.response_length||"balanced";
+    $notificationStyle.value=c.notification_style||"default";
+    dndState=!!c.dnd;
+    updateOverview();
+  }catch(e){}
+}
+async function persistLiveSettings(extra={}){
+  const update={dnd:$dnd.checked,response_length:$responseLength.value,notification_style:$notificationStyle.value,...extra};
+  if(emit) emit('toast-settings', {dnd:update.dnd, soundOn:!update.dnd, responseLength:update.response_length, notificationStyle:update.notification_style});
+  if(invoke){try{
+    const c=await invoke('update_config',{update});
+    dndState=!!c.dnd;
+    updateOverview();
+    showSaved('Saved');
+  }catch(e){showSaved('Save failed',true);}}
+}
+
+$autostart.addEventListener('change',()=>persistLiveSettings({autostart:$autostart.checked}));
+
+$dnd.addEventListener('change',async()=>{
+  dndState=$dnd.checked;updateBird();setStatus(lastConnected);
+  // Persist immediately — no need to click "Save changes"
+  await persistLiveSettings();
+});
+$responseLength.addEventListener('change',persistLiveSettings);
+$notificationStyle.addEventListener('change',persistLiveSettings);
+
+document.getElementById('quickConnectBtn')?.addEventListener('click',async()=>{
+  const parsed=parseSetupCode($setupCode.value);
+  const update={
+    server:(parsed.server||'https://cupcake777-anotify.hf.space').trim(),
+    device_name:(parsed.device_name||$deviceName.value||'').trim(),
+    autostart:$autostart.checked,
+    dnd:$dnd.checked,
+    response_length:$responseLength.value,
+    notification_style:$notificationStyle.value
+  };
+  if(parsed.token)update.token=parsed.token.trim();
+  if(invoke){try{
+    const c=await invoke('update_config',{update});
+    $deviceName.value=c.device_name||update.device_name||$deviceName.value;
+    window.__deviceId=c.device_id||''; dndState=!!c.dnd;
+    $setupCode.value='';
+  }catch(e){showSaved('Connect failed',true);return;}}
+  showSaved('Connected');
+  setStatus(lastConnected);
+  updateOverview();
+});
+
+$deviceName.addEventListener('change',()=>persistLiveSettings({device_name:$deviceName.value.trim()}));
+$deviceName.addEventListener('keydown',ev=>{if(ev.key==='Enter')$deviceName.blur();});
+
+async function sendTestNotification(){
+  // Send via the Tauri backend so the masked token never enters the WebView and
+  // ws/wss/http URL normalization stays identical to the real client.
+  try{
+    if(!invoke)throw new Error('Desktop backend unavailable');
+    const d=await invoke('send_test_notification');
+    if(d && d.ok){
+      addNotification({title:'Connection verified',message:`Relay reached ${d.delivered ?? '?'} connected client(s).`,source:'anotify',priority:'low',kind:'complete',timestamp:Date.now()/1000});
+    }else{
+      throw new Error('Relay returned an unexpected response');
+    }
+  }catch(e){
+    addNotification({title:'Connection check failed',message:String(e),source:'anotify',priority:'high',kind:'error',timestamp:Date.now()/1000});
+  }
+  switchView('inbox');
+}
+document.getElementById('testBtn').addEventListener('click',sendTestNotification);
+document.querySelectorAll('[data-test-notification]').forEach(b=>b.addEventListener('click',sendTestNotification));
+
+/* ── boot ── */
+let lastConnected=false;
+async function boot(){
+  await loadSettings();
+  setStatus(false);
+  if(invoke){
+    try{await invoke('get_notifications');}catch(e){}
+  }
+  if(listen){
+    listen('notification',ev=>{try{addNotification(ev.payload||{});}catch(e){}});
+    listen('history',_ev=>{ /* history is only a backend dedup baseline; never repopulate inbox */ });
+    listen('clients',ev=>{try{window.__clientsSeen=true;renderDevices(ev.payload?.clients||[]);}catch(e){}});
+    listen('connection',ev=>{lastConnected=!!ev.payload?.connected;setStatus(lastConnected);});
+    listen('approval-submitted',ev=>{
+      const {approval_id,choice}=ev.payload||{};
+      if(!approval_id)return;
+      for(const it of items){
+        if(it.data.approval_id===approval_id || it.data.approval?.id===approval_id){
+          it.pending=choice; break;
+        }
+      }
+      render();
+    });
+    listen('approval-resolved',ev=>{
+      const {approval_id,choice}=ev.payload||{};
+      if(!approval_id)return;
+      let matched=false;
+      for(const it of items){
+        if(it.data.approval_id===approval_id || it.data.approval?.id===approval_id){
+          it.pending=null; it.resolved=choice; matched=true; break;
+        }
+      }
+      render();
+    });
+  }
+  render();
+}
+boot();
+</script>
+</body>
+</html>
