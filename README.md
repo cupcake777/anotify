@@ -1,16 +1,12 @@
 <p align="center">
-  <img src="desktop/src/assets/brand/07_app_icon.png" alt="anotify penguin" width="136"/>
+  <img src="desktop/src/assets/brand/07_app_icon.png" alt="🐧 anotify" width="136"/>
 </p>
 
-<h1 align="center">anotify</h1>
+<h1 align="center">🐧 anotify</h1>
 
 <p align="center">
-  <strong>A quiet desktop inbox for remote agents.</strong>
-</p>
-
-<p align="center">
-  Send job results, failures, messages, and approval requests from an HPC cluster,<br/>
-  VPS, CI runner, or AI agent to one small desktop app.
+  <strong>🤖 AI 帮你搭好中继 · 🧑 你只要贴个 Token</strong><br/>
+  <sub><em>AI sets up the relay. You just paste a token.</em></sub>
 </p>
 
 <p align="center">
@@ -21,90 +17,176 @@
 </p>
 
 <p align="center">
-  <img src=".github/readme-flow.svg" alt="Animated anotify event flow from an agent through the relay to a desktop approval" width="920"/>
+  <img src=".github/readme-flow.svg" alt="⬇️ anotify event flow: agent → relay → desktop" width="920"/>
 </p>
 
 > [!NOTE]
-> **Public beta.** Unsigned desktop installers are available from [GitHub Releases](https://github.com/cupcake777/anotify/releases/latest). The project named `anotify` on PyPI is unrelated; install the Python CLI from this repository.
+> **📦 Public beta.** Unsigned desktop installers are available from [GitHub Releases](https://github.com/cupcake777/anotify/releases/latest). The project named `anotify` on PyPI is unrelated; install the Python CLI from this repository.
 
-A long job should not require a terminal vigil. An agent should not wait forever for one human decision. `anotify` gives remote work a short path back to your desktop:
+---
+
+## 🎯 到底是什么
+
+**anotify** 是一个通知中继，让 AI agent 能直接通知你的桌面。
+
+当你的编程助手、HPC 任务或 CI 跑完需要告诉你一声——或者需要你拍个板——它发一个信号，经过轻量中继，落到你桌面上弹一条原生通知。
+
+> **🧠 核心设计哲学：AI 干重活，你干轻活。**
+>
+> 中继服务器 -> AI 自动安装配置<br/>
+> 你只需要 -> 下载客户端 → 粘贴 Token → 收通知
+
+---
+
+## 🤖 AI 自助：一键部署中继
+
+如果你是 AI agent（Codex、Claude Code、Hermes、Cline…），在给用户搭通知通道时，照这个流程走：
 
 ```bash
-# Report a result
-anotify send "Training finished" --title "HPC" --priority high
+# 📦 获取源码（PyPI 上的 anotify 不是本项目）
+git clone https://github.com/cupcake777/anotify.git /opt/anotify
+cd /opt/anotify
+python3 -m venv .venv
+. .venv/bin/activate
+python -m pip install -e ".[server]"
 
-# Wait for a desktop decision
-if anotify approve "Deploy the new build?" --agent codex; then
-  ./deploy.sh
-fi
+# 🔑 生成安全 Token
+ANOTIFY_TOKEN=$(python3 -c "import secrets; print(secrets.token_urlsafe(36))")
+sudo install -d -m 700 /etc/anotify
+echo "$ANOTIFY_TOKEN" | sudo tee /etc/anotify/token >/dev/null
+sudo chmod 600 /etc/anotify/token
+
+# 🚀 启动中继
+python server/server.py --host 127.0.0.1 --port 7799 --token-file /etc/anotify/token
 ```
 
-The remote machine only makes outbound HTTP requests. No inbound agent port, chat workspace, or remote shell is required.
+中继就是一个 Python 进程——**没有数据库、没有托管服务、没有消息队列**。收 HTTP POST，走 WebSocket 广播给所有桌面客户端。
 
-<table align="center">
-  <tr>
-    <td align="center" width="150">
-      <img src="desktop/src/assets/brand/04_task_complete.png" alt="Task complete" width="52"/><br/>
-      <strong>Complete</strong><br/><sub>Long jobs are done.</sub>
-    </td>
-    <td align="center" width="150">
-      <img src="desktop/src/assets/brand/06_error.png" alt="Error" width="52"/><br/>
-      <strong>Error</strong><br/><sub>Something needs you.</sub>
-    </td>
-    <td align="center" width="150">
-      <img src="desktop/src/assets/brand/02_new_message.png" alt="New message" width="52"/><br/>
-      <strong>Message</strong><br/><sub>An agent checked in.</sub>
-    </td>
-    <td align="center" width="150">
-      <img src="desktop/src/assets/brand/03_approval_required.png" alt="Approval required" width="52"/><br/>
-      <strong>Approval</strong><br/><sub>A decision is waiting.</sub>
-    </td>
-  </tr>
-</table>
+### ✅ AI 部署 checklist
 
-## How it works
+| 步骤 | 说明 |
+|------|------|
+| ☐ 选一台有公网域名或 Cloudflare Tunnel 的机器 | 中继需要能被客户端访问 |
+| ☐ 生成随机 Token，`chmod 600` 存好 | 安全第一 |
+| ☐ 用 `--token-file` 启动 | Token 不会出现在 `ps aux` 里 |
+| ☐ 套上 systemd 或进程管理器 | 崩溃自动重启 |
+| ☐ 把中继地址 + Token 给用户 | 用户贴到桌面客户端就行 |
 
-```text
- Remote host                        Relay                         Your desktop
+### 📝 给用户的信息
 
- ┌──────────────────┐   HTTPS   ┌──────────────────┐  WebSocket  ┌──────────────────┐
- │ HPC / VPS / CI   │ ────────► │ anotify-server   │ ──────────► │ Tauri desktop    │
- │ AI coding agent  │   POST    │ FastAPI relay    │             │ toast + inbox    │
- └──────────────────┘           └──────────────────┘             └──────────────────┘
-          ▲                              │                                │
-          └──── outbound long-poll ──────┴──────── approval result ───────┘
+Agent 应该直接给用户一个可以粘贴的配置：
+
+```
+✅ 中继已就绪！在桌面客户端里填入以下信息：
+
+  Server: https://notify.yourdomain.com
+  Token:  your-token-here
 ```
 
-There are three small pieces:
+如果 Agent 能直接写配置文件，也可以一步到位：
 
-| Piece | Job |
-|---|---|
-| `anotify` | Python CLI used by jobs, scripts, CI, and agents to send events or wait for approval. |
-| `anotify-server` | Self-hosted FastAPI relay: REST in, WebSocket out, with token auth and an in-memory buffer. |
-| Desktop app | Tauri tray app with a live inbox, custom penguin toasts, connection status, silence mode, and approval actions. |
+```json
+{"server":"https://notify.yourdomain.com","token":"your-token-here"}
+```
 
-The Python tray client remains available as a compatibility path for traditional OS notifications. The Tauri app is the primary desktop experience.
+---
 
-## What you get
+## 🧑 用户：下载 + 粘贴 Token
 
-- **One command from anywhere** — send from Bash, Python, a scheduler, CI, or an agent tool call.
-- **Useful context, not mystery popups** — attach source, host, working directory, script, agent, and priority.
-- **Human approval without opening an inbound port** — the CLI posts a request and waits through outbound long-polling.
-- **A calm desktop surface** — live inbox, connection state, tray access, deduplication, auto-reconnect, and silence mode.
-- **A relay you control** — run it behind your own domain and TLS proxy; no managed account is required.
-- **Small, explicit limits** — 2 KB payloads, 30 sends per minute per IP, and bounded in-memory history.
+**这是你唯一需要手动做的事。** 👇
 
-### What it is not
+从 [GitHub Releases](https://github.com/cupcake777/anotify/releases/latest) 下载当前 unsigned beta 安装包；安装后粘贴 Agent 给你的 Server 和 Token。
 
-anotify is not a chat platform, durable event database, mobile push service, or remote execution system. It carries short signals and decisions. Keep logs, artifacts, and long-form output in the system that produced them.
+| 平台 | 安装方式 |
+|------|----------|
+| 🪟 **Windows** | 下载 `.msi` 安装包 → 双击装 → 粘贴 Token → 完事 |
+| 🍎 **macOS** | 下载 `.dmg` → 拖到 Applications → 粘贴 Token → 完事 |
+| 🐧 **Linux** | 下载 `.deb` 或 `.AppImage` → 安装 → 粘贴 Token → 完事 |
 
-## Quick start
+装好后，app 藏在系统托盘里。自动连中继、收通知、弹原生 Toast、记录历史。
 
-This local walkthrough proves the full loop from sender to relay to desktop. It assumes Python 3.9+, Rust stable, Node.js 22+, and pnpm 10.
+> 如果你是开发者想从源码跑，往下翻 👉 看 [Quick start](#quick-start)
 
-### 1. Install the CLI and relay
+### 🔔 你会看到什么
 
-From the repository root:
+| 通知类型 | 意思 |
+|----------|------|
+| ✅ **Complete** | 任务跑完了，一切正常 |
+| ❌ **Error** | 出事了，需要你瞅一眼 |
+| 💬 **Message** | Agent 给你留了个言 |
+| 🔐 **Approval** | Agent 等你拍板呢 |
+
+通知以**原生 OS 弹窗**出现（Windows Toast 🪟、macOS 通知中心 🍎、Linux notify-send 🐧）。托盘图标一眼告诉你连接状态。
+
+### ✋ 审批请求
+
+有些通知可以当场回复。Agent 问你"要不要部署？"或者"删不删这个旧备份？"，你直接在通知或收件箱里点 **Accept** 或 **Deny**，Agent 收到答复继续干活。
+
+---
+
+## 💡 使用场景
+
+### 🤖 AI 编程助手
+
+你的编程 agent（Claude Code、Codex、Hermes、Cline）遇到问题、跑完任务或需要你批准时，直接弹桌面通知。不用盯着终端，不用开着聊天窗口。
+
+```bash
+# Agent 自动跑这行
+anotify send "✅ 编译完成" --title "Codex" --priority high
+anotify approve "🚀 部署到生产？" --agent codex --timeout 300
+```
+
+### 🖥️ HPC / 批处理任务
+
+集群上跑了几小时的作业，跑完自动通知你——不用轮询、不用等邮件、不用 SSH 上去看。
+
+```bash
+# Slurm epilogue 或 CI 脚本里加一行
+anotify send "🧬 Job $SLURM_JOB_ID done" --title "RNA-seq" --priority high
+```
+
+### 🔄 CI / CD 流水线
+
+GitHub Actions、GitLab CI、Jenkins 跑完直接弹你桌面。
+
+```yaml
+# GitHub Actions workflow 里
+- run: anotify send "🔧 CI: ${{ job.status }}" --title "${{ github.repository }}"
+```
+
+---
+
+## 🏗️ 架构
+
+```
+                          🔒 HTTPS                    🔗 WebSocket
+ Remote host           ──────────►      Relay       ──────────►   Your desktop
+ ┌──────────────────┐               ┌──────────────────┐          ┌──────────────────┐
+ │ 🖥️ HPC / VPS     │  POST /api/   │  anotify-server  │  ws://   │  🐧 Tauri app    │
+ │ 🤖 AI agent      │  ───────────► │  FastAPI relay   │  ───────►│  toast + inbox   │
+ │ 🔧 CI runner     │               │  token auth      │          │  native notify   │
+ └──────────────────┘               └──────────────────┘          └──────────────────┘
+          ▲                                   │                             │
+          └──────── outbound poll ────────────┴─── approval result ─────────┘
+```
+
+三个组件：
+
+| 组件 | 干什么的 |
+|------|----------|
+| `anotify` 🐍 | Python CLI，agent/脚本/CI/cron 用来发通知或等人审批 |
+| `anotify-server` ⚡ | 自托管 FastAPI 中继，REST 收 → WebSocket 发，Token 鉴权，内存缓冲 |
+| 桌面 app 🐧 | Tauri 托盘应用，实时收件箱、原生通知、连接状态、一键审批 |
+
+> 远程机器只做出站 HTTP 请求。**不需要开入站端口、不需要聊天工作区、不需要远程 Shell。**
+
+---
+
+## 🚀 Quick start（源码跑）
+
+在本地跑通完整链路。需要 Python 3.9+、Rust stable、Node.js 22+、pnpm 10。
+
+### 1️⃣ 安装 CLI 和中继
 
 ```bash
 python3 -m venv .venv
@@ -112,18 +194,14 @@ python3 -m venv .venv
 python -m pip install -e ".[server]"
 ```
 
-### 2. Start a local relay
+### 2️⃣ 启动本地中继
 
 ```bash
 ANOTIFY_TOKEN=local-dev-token \
   python server/server.py --host 127.0.0.1 --port 7799
 ```
 
-`local-dev-token` is only for this loopback demo. Generate a long random token before exposing a relay.
-
-### 3. Configure and open the desktop app
-
-In a second terminal:
+### 3️⃣ 配置 + 打开桌面 app
 
 ```bash
 . .venv/bin/activate
@@ -136,9 +214,7 @@ pnpm install
 pnpm tauri dev
 ```
 
-### 4. Send the first signal
-
-In a third terminal:
+### 4️⃣ 发送第一条通知 🎉
 
 ```bash
 . .venv/bin/activate
@@ -149,214 +225,92 @@ anotify send "Training finished" \
   --script train.py
 ```
 
-The event should appear as a penguin toast and in the desktop inbox.
+通知会以弹窗出现，同时收件箱里能看到。
 
-## Agent workflows
+---
 
-### Report completion or failure
+## ⚙️ 配置
 
-```bash
-if python train.py --epochs 100; then
-  anotify send "Training succeeded" \
-    --title "ML pipeline" \
-    --priority high \
-    --script train.py
-else
-  status=$?
-  anotify send "Training failed with exit code ${status}" \
-    --title "ML pipeline" \
-    --priority critical \
-    --script train.py
-  exit "$status"
-fi
-```
+优先级：`CLI 参数 > 环境变量 > ~/.anotify.json`
 
-### Gate a destructive action
+| 配置项 | CLI | 环境变量 | 配置键 |
+|--------|-----|----------|--------|
+| 📡 中继地址 | `--server` | `ANOTIFY_SERVER` | `server` |
+| 🔑 Token | `--token` | `ANOTIFY_TOKEN` | `token` |
+| 📄 配置路径 | — | `ANOTIFY_CONFIG` | — |
+
+一次性保存：
 
 ```bash
-if anotify approve "Remove the old deployment?" \
-  --agent claude-code \
-  --action delete \
-  --target /srv/app/releases/previous \
-  --timeout 600; then
-  rm -rf /srv/app/releases/previous
-else
-  echo "Not approved"
-fi
+anotify config --server https://notify.example.com --token your-secret-token
 ```
 
-`anotify approve` exits with a shell-friendly code:
+Python CLI 和桌面 app 共用同一个配置文件。Unix 上权限 `0600`。Tauri 后端返回设置到 WebView 时会自动掩码已有 Token。
 
-| Exit code | Meaning |
-|:---:|---|
-| `0` | Approved |
-| `1` | Denied |
-| `2` | Timed out or failed |
+---
 
-### Notify from GitHub Actions
-
-```yaml
-- name: Notify desktop
-  if: always()
-  env:
-    ANOTIFY_SERVER: ${{ secrets.ANOTIFY_SERVER }}
-    ANOTIFY_TOKEN: ${{ secrets.ANOTIFY_TOKEN }}
-  run: |
-    python -m pip install .
-    anotify send "CI finished: ${{ job.status }}" \
-      --title "GitHub Actions" \
-      --priority high \
-      --source "${{ github.repository }}"
-```
-
-The same two commands work from Codex, Claude Code, Hermes Agent, cron jobs, Slurm epilogues, and ordinary shell scripts. Give the process access to `anotify send` for status updates and `anotify approve` only when it genuinely needs a decision.
-
-## Configuration
-
-Values resolve in this order:
-
-```text
-CLI flags  >  environment variables  >  ~/.anotify.json
-```
-
-| Setting | CLI | Environment | Config key |
-|---|---|---|---|
-| Relay URL | `--server` | `ANOTIFY_SERVER` | `server` |
-| Auth token | `--token` | `ANOTIFY_TOKEN` | `token` |
-| Config path | — | `ANOTIFY_CONFIG` | — |
-
-Save the common values once:
+## 🏠 自托管中继
 
 ```bash
-anotify config \
-  --server https://notify.example.com \
-  --token your-secret-token
-```
-
-Both the Python CLI and desktop app use the same config file. On Unix-like systems it is written with `0600` permissions. The Tauri backend masks an existing token before returning settings to the WebView.
-
-## Self-hosting
-
-Run the relay on a server you control and terminate TLS with nginx, Caddy, or another reverse proxy that supports WebSocket upgrades.
-
-```bash
+git clone https://github.com/cupcake777/anotify.git
+cd anotify
+python3 -m venv .venv
 . .venv/bin/activate
-ANOTIFY_TOKEN='replace-with-a-long-random-secret' \
+python -m pip install -e ".[server]"
+ANOTIFY_TOKEN='替换成你的随机长密码' \
   python server/server.py --host 127.0.0.1 --port 7799
 ```
 
-Check it locally:
+验证：
 
 ```bash
 curl http://127.0.0.1:7799/api/health
 ```
 
-Then proxy both the REST endpoints and `/ws` to port `7799`, and configure senders with the public HTTPS base URL:
+然后在前面套 TLS（nginx、Caddy 或 Cloudflare Tunnel）。详见 [`server/README.md`](server/README.md)。
 
-```bash
-anotify config \
-  --server https://notify.example.com \
-  --token replace-with-a-long-random-secret
+---
+
+## 🔒 安全
+
+- **🔐 Token 鉴权** — 每次请求都需要 `Authorization` header；URL 参数 Token 仅作兼容回退
+- **🔒 必须走 TLS** — 部署在 HTTPS 后面，否则 Token 和通知内容明文传输
+- **📄 Token 文件** — 用 `--token-file` 避免 Token 出现在 `ps aux` 和进程日志里
+- **🧠 内存级历史** — 中继重启后记录消失。中继和桌面两端历史都有上限
+- **⚠️ 审批 ≠ 沙箱** — 调用脚本自己负责校验、授权和执行，中继只传递决策
+
+---
+
+## 📂 项目结构
+
 ```
-
-See [`server/README.md`](server/README.md) for endpoints, Docker notes, and deployment details.
-
-## Security model
-
-- Set `ANOTIFY_TOKEN`, `--token`, or `--token-file` on every non-local relay.
-- Put TLS in front of the relay. Tokens and notification text are otherwise readable in transit.
-- Sender and desktop credentials use HTTP Bearer authentication in the `Authorization` header; query-string tokens exist only as a compatibility fallback.
-- A self-hosted global token has full relay access. Workspace deployments can create separate sender and receiver roles, but those workspaces are currently in memory.
-- Relay history is in memory and disappears on restart. Both relay and desktop session history are bounded.
-- Notification text is not a secret store. Send a short summary and keep sensitive output in the originating system.
-- Approval requests provide a decision channel, not a sandbox. The calling script still owns validation, authorization, and the action itself.
-
-`--public` permits unauthenticated access only when no token is configured. Do not expose that combination to the internet unless open access is intentional.
-
-## Desktop builds
-
-The Tauri app targets Windows, macOS, and Linux. Build recipes are included for Windows MSI/NSIS, macOS DMG/app bundles, and Linux DEB/RPM/AppImage artifacts.
-
-```bash
-cd desktop
-pnpm install
-pnpm tauri build
-```
-
-Build output is written under:
-
-```text
-desktop/src-tauri/target/release/bundle/
-```
-
-Platform packages in the public beta are unsigned. Download them from [GitHub Releases](https://github.com/cupcake777/anotify/releases/latest), verify them against `SHA256SUMS.txt`, and see [`desktop/README.md`](desktop/README.md) for platform notes and local development.
-
-### Python desktop client
-
-For a lighter compatibility client using traditional OS notification backends:
-
-```bash
-python -m pip install -e ".[gui]"
-anotify-client
-```
-
-On macOS, the optional menu-bar client is available with:
-
-```bash
-python -m pip install -e ".[mac]"
-anotify-mac
-```
-
-## Repository map
-
-```text
 anotify/
-├── src/anotify/       Python sender CLI and compatibility desktop clients
-├── server/            FastAPI relay and deployment notes
-├── desktop/           Tauri 2 desktop app
-├── tests/             Python, relay, security, and UI contract tests
-└── .github/workflows/ Desktop package builds and Python CI
+├── src/anotify/       🐍 Python 发送 CLI + 兼容桌面客户端
+├── server/            ⚡ FastAPI 中继 + 部署文档
+├── desktop/           🐧 Tauri 2 桌面 app
+├── tests/             🧪 Python/中继/安全/UI 集成测试
+└── .github/workflows/ 🔄 桌面包构建 + Python CI
 ```
 
-## Development
+---
 
-Install the test dependencies and run the Python checks:
+## 📊 项目状态
 
-```bash
-python -m pip install -e ".[gui,test]"
-ruff check src/ tests/
-mypy src/anotify/ --ignore-missing-imports
-pytest tests/ -q
-```
+发送 CLI、中继、Tauri 桌面 app、审批流程、跨平台构建都已实现并通过测试。`v0.2.1` 是第一个公开桌面 beta；Python CLI 的包名和分发仍待最终确定。
 
-Check the Tauri backend and produce a release build:
+Beta 期间：
+- 📦 从 GitHub Releases 下载 unsigned 桌面安装包
+- 🐍 Python CLI 从本仓库安装，不要从 PyPI
+- ⚠️ 配置和 UI 细节还在演进
+- 🧠 中继历史是内存级的，不是持久存储
+- 🔍 用于生产审批前先审查 beta 版本
 
-```bash
-cd desktop
-pnpm install
-cargo fmt --manifest-path src-tauri/Cargo.toml --check
-cargo check --manifest-path src-tauri/Cargo.toml --locked
-pnpm tauri build
-```
+---
 
-Small, focused pull requests are easiest to review. Include a test for behavior changes and keep the sender, relay, and both desktop clients compatible with the shared `~/.anotify.json` format.
+## 📜 License
 
-## Project status
-
-The sender, relay, Tauri desktop app, approval path, and cross-platform build workflows are implemented. `v0.2.1` is the first public desktop beta; package-name and distribution decisions for the Python CLI remain open.
-
-During the beta:
-
-- download unsigned desktop installers from [GitHub Releases](https://github.com/cupcake777/anotify/releases/latest);
-- install the Python CLI from this repository, not PyPI;
-- expect config and UI details to evolve;
-- do not treat the in-memory relay as durable storage;
-- review beta builds before using them for production approvals.
-
-## License
-
-MIT. See [`LICENSE`](LICENSE).
+MIT。详见 [`LICENSE`](LICENSE)。
 
 <p align="center">
-  <sub>tiny messages · big heart</sub>
+  <sub>🐧 AI sets up the relay. You just paste a token.</sub>
 </p>
