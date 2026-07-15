@@ -21,7 +21,7 @@
 </p>
 
 > [!NOTE]
-> **📦 Public beta.** Unsigned desktop installers are available from [GitHub Releases](https://github.com/cupcake777/anotify/releases/latest). The project named `anotify` on PyPI is unrelated; install the Python CLI from this repository.
+> **📦 Public beta.** Unsigned desktop installers are available from [GitHub Releases](https://github.com/cupcake777/anotify/releases/tag/v0.2.1). The project named `anotify` on PyPI is unrelated; install the Python CLI from this repository.
 
 ---
 
@@ -95,7 +95,7 @@ Agent 应该直接给用户一个可以粘贴的配置：
 
 **这是你唯一需要手动做的事。** 👇
 
-从 [GitHub Releases](https://github.com/cupcake777/anotify/releases/latest) 下载当前 unsigned beta 安装包；安装后粘贴 Agent 给你的 Server 和 Token。
+从 [GitHub Releases](https://github.com/cupcake777/anotify/releases/tag/v0.2.1) 下载当前 unsigned beta 安装包；安装后粘贴 Agent 给你的 Server 和 Token。
 
 | 平台 | 安装方式 |
 |------|----------|
